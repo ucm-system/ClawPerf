@@ -65,3 +65,11 @@ docs/*.png
 # Local model caches / tool markers
 models/
 *.mdl
+
+# Benchmark output artifacts (results JSON/MD, history, comparisons)
+results_*.json
+results_*.md
+comparison.md
+clawperf_history.jsonl
+record_server.log
+.zcode/

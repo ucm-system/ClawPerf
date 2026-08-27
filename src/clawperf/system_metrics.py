@@ -383,7 +383,19 @@ async def reset_prefix_cache(endpoint: str, backend: str) -> bool:
                     logger.info("Prefix cache reset OK (%s)", url)
                     return True
                 body = await resp.text()
-                logger.warning("Prefix cache reset %s returned %d: %s", url, resp.status, body[:200])
+                if resp.status == 404:
+                    # Some backends (e.g. vllm-ascend 0.23) removed the reset
+                    # endpoint entirely. The benchmark proceeds; delta-based
+                    # hit-rate math still isolates the measurement window,
+                    # though residual prefixes from prior traffic can inflate
+                    # the measured rate slightly.
+                    logger.warning(
+                        "Prefix cache reset endpoint %s not found (404) — this backend "
+                        "doesn't expose cache reset. Continuing without a clean baseline; "
+                        "measured hit rate may include residual prefixes.", url,
+                    )
+                else:
+                    logger.warning("Prefix cache reset %s returned %d: %s", url, resp.status, body[:200])
                 return False
     except Exception as e:
         logger.warning("Prefix cache reset %s failed: %s", url, e)

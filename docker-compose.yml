@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  clawperf:
+    build: .
+    container_name: clawperf
+    volumes:
+      - ./results:/app/results
+      - ./recordings:/app/recordings
+    # Override with your endpoint
+    environment:
+      - CLAWPERF_ENDPOINT=http://host.docker.internal:8000/v1
+      - CLAWPERF_MODEL=Qwen/Qwen2.5-72B
+    # Example: quick benchmark
+    command: ["--mode", "scenario", "--context-profile", "medium", "--num-users", "4", "--max-turns", "10"]

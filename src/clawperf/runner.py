@@ -122,6 +122,11 @@ class BenchmarkRunner:
         self._metrics_start: Optional[Dict] = None
         self._metrics_end: Optional[Dict] = None
         self._prefix_cache_delta: Optional[Dict] = None
+        # Early abort: track consecutive failures across all users. When
+        # max_consecutive_failures > 0 and the counter exceeds the threshold,
+        # _shutdown is set so remaining users/turns abort at the next checkpoint.
+        self._consecutive_failures: int = 0
+        self._abort_event = asyncio.Event()
 
     async def run(self):
         """Execute the full benchmark."""
@@ -496,6 +501,7 @@ class BenchmarkRunner:
         _ = self.tokenizer_manager.tokenizer
         from evalscope.perf.core.http_client import AioHttpClient
         from evalscope.perf.plugin.api.openai_api import OpenaiPlugin
+
         from clawperf.logging_setup import quiet_third_party
 
         es_args = self.config.to_evalscope_args()
@@ -725,6 +731,7 @@ class BenchmarkRunner:
             "bench_time_s": round(bench_time_s, 3),
             "steps_tested": len(steps),
         }
+        self._slo_max_users = max_users  # for CI exit-code evaluation
         result = {
             "config": self.config.to_dict(),
             "summary": summary,
@@ -738,6 +745,7 @@ class BenchmarkRunner:
         with open(self.config.output, "w", encoding="utf-8") as f:
             json.dump(result, f, indent=2, ensure_ascii=False, default=str)
         self._append_history(result, setup_time_s, bench_time_s)
+        self._generate_markdown_report(result)
 
         # ── Capacity curve table ──
         print("\n" + "=" * 70, flush=True)
@@ -818,6 +826,7 @@ class BenchmarkRunner:
             json.dump(result, f, indent=2, ensure_ascii=False, default=str)
 
         self._append_history(result, setup_time_s, bench_time_s)
+        self._generate_markdown_report(result)
         self._print_hitrate_summary(summary, bench_time_s, setup_time_s, target, measured)
         logger.info("Results saved to: %s", self.config.output)
 
@@ -903,9 +912,12 @@ class BenchmarkRunner:
         per-task wall time, and the real prefix-cache hit rate from /metrics."""
         import os
         import tempfile
+
         from clawperf.agent import Agent, AgentClient
         from clawperf.agent_tasks import (
-            PRESET_TASKS, build_task_instances, load_tasks_from_file,
+            PRESET_TASKS,
+            build_task_instances,
+            load_tasks_from_file,
             materialize_workspace,
         )
         from clawperf.logging_setup import quiet_third_party
@@ -1020,7 +1032,11 @@ class BenchmarkRunner:
                 {"turn": t.turn, "ttft_ms": t.ttft_ms, "e2e_ms": round(t.e2e_ms, 3),
                  "input_tokens": t.input_tokens, "output_tokens": t.output_tokens,
                  "tool_calls": t.tool_calls, "tool_time_ms": round(t.tool_time_ms, 3),
-                 "finish_reason": t.finish_reason}
+                 "finish_reason": t.finish_reason,
+                 "ttft_thinking_ms": t.ttft_thinking_ms,
+                 "ttft_visible_ms": t.ttft_visible_ms,
+                 "thinking_tokens": t.thinking_tokens,
+                 "thinking_overhead_ms": round(t.thinking_overhead_ms, 3)}
                 for t in r.turns
             ],
         }
@@ -1061,6 +1077,19 @@ class BenchmarkRunner:
             if vals:
                 summary[key] = _percentiles(vals)
 
+        # Reasoning / thinking token analysis (DeepSeek R1, o3, etc.).
+        thinking_turns = [t for r in ok for t in r["turns"] if t.get("thinking_tokens")]
+        if thinking_turns:
+            summary["has_thinking"] = True
+            summary["total_thinking_tokens"] = sum(t["thinking_tokens"] for t in thinking_turns)
+            summary["thinking_turns"] = len(thinking_turns)
+            thinking_overhead = [t["thinking_overhead_ms"] for t in thinking_turns if t.get("thinking_overhead_ms")]
+            if thinking_overhead:
+                summary["thinking_overhead_ms"] = _percentiles(thinking_overhead)
+            ttft_thinking = [t["ttft_thinking_ms"] for t in thinking_turns if t.get("ttft_thinking_ms") is not None]
+            if ttft_thinking:
+                summary["ttft_thinking_ms"] = _percentiles(ttft_thinking)
+
         result = {
             "config": self.config.to_dict(),
             "summary": summary,
@@ -1076,6 +1105,7 @@ class BenchmarkRunner:
         with open(self.config.output, "w", encoding="utf-8") as f:
             json.dump(result, f, indent=2, ensure_ascii=False, default=str)
         self._append_history(result, setup_time_s, bench_time_s)
+        self._generate_markdown_report(result)
         self._print_agent_summary(summary, bench_time_s, setup_time_s, measured)
 
     def _print_agent_summary(self, summary, bench_time_s, setup_time_s, measured):
@@ -1101,6 +1131,17 @@ class BenchmarkRunner:
         ct.add_row(["Task Throughput", f"{summary['task_throughput']:.4f} tasks/s"])
         ct.add_row(["Output Token Throughput",
                     f"{summary['total_output_tokens'] / bench_time_s:.2f} tok/s" if bench_time_s > 0 else "N/A"])
+        # Reasoning token analysis (if the model produces thinking tokens).
+        if summary.get("has_thinking"):
+            ct.add_row(["Thinking Tokens (total)", f"{summary['total_thinking_tokens']:,}"])
+            ct.add_row(["Thinking Turns", str(summary["thinking_turns"])])
+            oh = summary.get("thinking_overhead_ms", {})
+            if oh:
+                ct.add_row(["Thinking Overhead P50", f"{oh.get('P50', 0):.1f} ms"])
+                ct.add_row(["Thinking Overhead P99", f"{oh.get('P99', 0):.1f} ms"])
+            tt = summary.get("ttft_thinking_ms", {})
+            if tt:
+                ct.add_row(["TTFT (thinking) P50", f"{tt.get('P50', 0):.1f} ms"])
         if measured is not None:
             ct.add_row(["MEASURED Prefix Cache Hit Rate", f"{measured * 100:.2f}%"])
         elif self._prefix_cache_delta and self._prefix_cache_delta.get("prefix_cache_counter_reset"):
@@ -1303,6 +1344,21 @@ class BenchmarkRunner:
         # every turn — the old O(n) scan made progress updates O(n^2) overall.
         if not turn_record.get("success", False):
             self._error_count += 1
+            self._consecutive_failures += 1
+            # Early abort: if configured and threshold exceeded, trigger shutdown.
+            if (self.config.max_consecutive_failures > 0
+                    and self._consecutive_failures >= self.config.max_consecutive_failures):
+                logger.error(
+                    "Aborting: %d consecutive failures (threshold=%d).",
+                    self._consecutive_failures, self.config.max_consecutive_failures,
+                )
+                self._shutdown = True
+                self._abort_event.set()
+                for task in self._user_tasks:
+                    if not task.done():
+                        task.cancel()
+        else:
+            self._consecutive_failures = 0  # reset on success
 
         if self.config.verbose:
             self._print_verbose_turn(turn_record)
@@ -1493,6 +1549,7 @@ class BenchmarkRunner:
         # Append a compact one-line record (config + summary + per-user aggregates)
         # to the history JSONL so results accumulate across runs.
         self._append_history(result, setup_time_s, bench_time_s)
+        self._generate_markdown_report(result)
 
         self._print_final_summary(bench_time_s, setup_time_s)
         logger.info("Results saved to: %s", self.config.output)
@@ -1533,6 +1590,32 @@ class BenchmarkRunner:
             logger.warning("Failed to append history to %s: %s", self.config.history, e)
 
     # ── Pretty output ──
+
+    def _has_all_failures(self) -> bool:
+        """Return True if every turn/request failed (for CI exit code 2)."""
+        # SLO mode: no per-turn records; judge by the capacity sweep outcome.
+        if self.config.mode == "slo":
+            return getattr(self, "_slo_max_users", 0) <= 0
+        if not self._turn_records and not getattr(self, "_hitrate_records", None) \
+           and not getattr(self, "_agent_results", None):
+            return True
+        records = self._turn_records or getattr(self, "_hitrate_records", []) or []
+        agent = getattr(self, "_agent_results", [])
+        if records:
+            return all(not r.get("success", False) for r in records)
+        if agent:
+            return all(bool(r.get("error")) for r in agent)
+        return True
+
+    def _generate_markdown_report(self, result: dict):
+        """Write a Markdown report alongside the JSON results."""
+        try:
+            from clawperf.report import generate_report
+            md_path = self.config.output.rsplit(".", 1)[0] + ".md"
+            generate_report(result, output_path=md_path)
+            logger.info("Markdown report saved to: %s", md_path)
+        except Exception as e:
+            logger.warning("Failed to generate Markdown report: %s", e)
 
     def _print_final_summary(self, bench_time_s: float, setup_time_s: float = 0.0):
         success_turns = [t for t in self._turn_records if t.get("success")]

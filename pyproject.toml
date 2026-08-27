@@ -29,12 +29,16 @@ dependencies = [
     "aiohttp>=3.8",
     "prettytable>=3.10",
     "tqdm>=4.60",
+    "pyyaml>=6.0",
+    "httpx>=0.25",
 ]
 
 [project.optional-dependencies]
 mock-server = ["fastapi>=0.100", "uvicorn>=0.20"]
 agent = ["openai>=1.0"]
-dev = ["pytest>=7", "pytest-asyncio>=0.21", "ruff>=0.1", "openai>=1.0"]
+record = ["fastapi>=0.100", "uvicorn>=0.20", "httpx>=0.25"]
+replay = ["httpx>=0.25"]
+dev = ["pytest>=7", "pytest-asyncio>=0.21", "ruff>=0.1", "openai>=1.0", "pyyaml>=6.0", "fastapi>=0.100", "uvicorn>=0.20", "httpx>=0.25"]
 
 [project.urls]
 Homepage = "https://github.com/ucm-system/ClawPerf"

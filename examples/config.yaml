@@ -1,0 +1,47 @@
+# ClawPerf YAML Configuration Example
+#
+# Usage: clawperf --config examples/config.yaml --mode scenario
+# Or set via environment: CLAWPERF_* variables override these.
+#
+# Precedence: CLI args > CLAWPERF_* env vars > this YAML > defaults.
+
+mode: scenario
+
+# Use a named context profile instead of raw token counts:
+# fresh(6K), short(20K), medium(40K), long(70K), full(100K), xl(200K), xxl(400K)
+context_profile: medium
+
+# Or use a pre-configured suite (overrides context_profile):
+# suite: standard  # quick | standard | full | hitrate
+
+# Model & endpoint
+endpoint: http://localhost:8000/v1
+model: Qwen/Qwen2.5-72B
+# api_key: sk-xxx  # set via CLAWPERF_API_KEY instead
+backend: vllm
+
+# User configuration
+num_users: 8
+user_arrival: burst  # burst | steady:2 | poisson:0.5
+
+# Run configuration
+max_turns: 20
+max_consecutive_failures: 5  # abort after 5 consecutive failures (0=disabled)
+
+# Context configuration (overridden by context_profile if set)
+# system_prefix_tokens: 28000
+# user_prefix_tokens: 10000
+# input_tokens_per_turn: 5000
+output_tokens_per_turn: 512
+max_context_tokens: 128000
+compaction_prefix_increment: 5000
+
+# System metrics (Prometheus)
+metrics_endpoint: http://localhost:8000/metrics
+# metrics_samples: false  # only start+end snapshots (recommended)
+reset_cache: true  # evict prefix cache before the start snapshot
+
+# Output
+output: results_medium_8users.json
+history: clawperf_history.jsonl
+verbose: false

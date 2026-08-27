@@ -1,0 +1,1 @@
+{"prompt": "Use the list_files tool first to see what files exist. Then use read_file to read calc.py. Then use write_file to fix the bug. Finally run_shell python calc.py to verify. Do not skip tools.", "workspace": {"calc.py": "def add(a, b):\n    return a - b\n\nif __name__ == \"__main__\":\n    print(add(2, 3))\n"}, "max_steps": 12}

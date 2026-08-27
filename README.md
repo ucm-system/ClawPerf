@@ -1,409 +1,306 @@
-# ClawPerfBench
+# ClawPerf
 
 [![PyPI Version](https://img.shields.io/pypi/v/clawperf.svg)](https://pypi.org/project/clawperf/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/clawperf.svg)](https://pypi.org/project/clawperf/)
 [![License](https://img.shields.io/pypi/l/clawperf.svg)](https://github.com/ucm-system/ClawPerf/blob/main/LICENSE)
-[![GitHub Stars](https://img.shields.io/github/stars/ucm-system/ClawPerf.svg)](https://github.com/ucm-system/ClawPerf)
 
-Performance benchmarking tool for LLM Serving backends with multi-turn long-context workloads.
+Performance benchmarking tool for LLM serving backends (vLLM / SGLang / MindIE / vllm-ascend) under **real agent workloads** — multi-turn, long-context, prefix-cache-heavy traffic.
 
 [中文文档](README_CN.md)
 
-Built on [EvalScope](https://github.com/modelscope/evalscope)'s perf infrastructure, adding:
+Built on [EvalScope](https://github.com/modelscope/evalscope)'s perf infrastructure, ClawPerf measures how an inference stack behaves when actual coding agents hammer it: growing contexts, shared prefixes between turns, tool calls, and concurrent sessions.
 
-- **Multi-turn context model**: System Prefix + User Prefix + History + Current Input
-- **Append-mode compaction**: Clear history, grow user prefix when context reaches limits
-- **User arrival scheduling**: Burst, steady, or Poisson arrival patterns
-- **System metrics polling**: Prometheus endpoint support for vLLM, SGLang, MindIE
-- **Per-user + per-turn metrics**: TTFT, TPOT, ITL with compaction tracking
-- **Prefix cache simulation**: Trie-based HBM + external prefix cache hit rate tracking in mock server
+## Features
 
-![ClawPerf Benchmark Output](docs/benchmark_result.jpg)
+**Seven benchmark modes, one CLI:**
+
+| Mode | What it does |
+|------|--------------|
+| `scenario` (default) | Multi-turn long-context workload: N users maintain independent growing conversations (system prefix + user prefix + history + current input), with append-mode compaction. The core agentic-load simulator. |
+| `hitrate` | Controlled prefix-cache hit-rate test: prompts with a known `[shared prefix][boundary][unique suffix]` split, prefill, then **target vs measured** hit rate from the server's Prometheus counters. |
+| `slo` | SLO-driven capacity sweep: ramps concurrency geometrically, then binary-refines the **max users** meeting P{percentile} TTFT/TPOT targets. |
+| `agent` | Real coding agent at work: the model actually calls tools (read/write files, run shell) via OpenAI function-calling across growing context. |
+| `trace` | KV-cache hit-rate analysis + real replay from a trace file: simulates a block-level prefix cache (LRU/FIFO eviction, budget sweep) and, when the trace carries messages, replays real requests against the endpoint. |
+| `record` | Recording proxy: sits between a real agent (Claude Code, etc.) and the LLM endpoint, captures every request/response round-trip as JSONL. |
+| `replay` | Replays a recorded JSONL against any endpoint with live-history mode (feeds real responses forward so KV-cache prefixes stay aligned). |
+
+**Three subcommands:**
+
+| Command | Purpose |
+|---------|---------|
+| `clawperf report` | Regenerate a Markdown report (verdict + ASCII charts + findings) from a saved result JSON. |
+| `clawperf compare` | Side-by-side comparison of two result JSONs (TTFT/decode/hit-rate/victory summary). |
+| `clawperf trace-convert` | Convert external agent-trace datasets (Claude Code sessions, ShareGPT, OpenAI messages) into replayable traces. |
+
+**Also included:**
+
+- Command-line workflow is reachable without an LLM: `clawperf-mock-server` is a FastAPI mock LLM with a trie-based prefix-cache simulator and vLLM-style `/metrics`.
+- User arrival scheduling (burst / steady / Poisson), reasoning-token (thinking) detection, early abort on consecutive failures, CI-friendly exit codes (0 ok / 1 config / 2 all-failed / 3 interrupted).
+- Layered configuration: **CLI args > `CLAWPERF_*` env vars > YAML (`--config`) > defaults**.
 
 ## Installation
 
 ```bash
-pip install clawperf
+pip install clawperf                      # core (scenario / hitrate / slo / trace)
+pip install "clawperf[agent]"             # + real agent mode (openai SDK)
+pip install "clawperf[record]"            # + recording proxy (fastapi/uvicorn)
+pip install "clawperf[mock-server]"       # + mock LLM server
+pip install "clawperf[dev]"               # + development tools
 ```
 
-For the mock server used in testing:
-
-```bash
-pip install clawperf[mock-server]
-```
-
-For development:
-
-```bash
-pip install clawperf[dev]
-```
-
-Install from source (recommended for development):
+From source:
 
 ```bash
 git clone https://github.com/ucm-system/ClawPerf.git
 cd ClawPerf
-uv sync --extra dev --extra mock-server
+pip install -e ".[dev]"
 ```
 
 ## Quick Start
 
-### Run a benchmark
+All examples assume a running vLLM-style endpoint (`http://localhost:8000/v1`).
+
+### scenario — multi-user long-context workload
 
 ```bash
 clawperf \
-  --endpoint http://localhost:8000/v1/chat/completions \
-  --model qwen3-32b \
-  --num-users 5 \
-  --user-arrival steady:2 \
-  --max-turns 10 \
+  --endpoint http://localhost:8000/v1 \
+  --model qwen2.5-72b \
+  --context-profile medium \        # named profile: sys=28K + usr=10K + in=5K
+  --num-users 8 \
+  --max-turns 20 \
+  --metrics-endpoint http://localhost:8000/metrics \
   --output results.json
 ```
 
-### Start mock server (for testing)
+Or use a pre-configured suite that runs several (users × profile) scenarios in sequence:
 
 ```bash
-clawperf-mock-server --port 8080
+clawperf --endpoint http://localhost:8000/v1 --model qwen2.5-72b \
+  --suite standard --output results_suite.json
 ```
 
-### End-to-end test with mock server
-
-```bash
-# Start mock server
-clawperf-mock-server --port 8080
-
-# Run benchmark against it
-clawperf \
-  --endpoint http://localhost:8080/v1/chat/completions \
-  --model Qwen/Qwen2.5-7B-Instruct \
-  --tokenizer Qwen/Qwen2.5-7B-Instruct \
-  --num-users 4 \
-  --max-turns 5 \
-  --max-context-tokens 200000 \
-  --metrics-endpoint http://localhost:8080/metrics \
-  --backend vllm \
-  --verbose
-```
-
-### Hit-rate test mode (controlled prefix-cache hit rate)
-
-Instead of a multi-turn scenario, run a controlled prefix-cache hit-rate test:
-specify input/output length and a target hit rate, and ClawPerf constructs
-prompts with a known shared-prefix / unique-suffix split, prefills the prefixes,
-then measures the **actual** hit rate from the server's Prometheus counters.
+### hitrate — controlled prefix-cache hit rate
 
 ```bash
 clawperf --mode hitrate \
-  --endpoint http://localhost:8000/v1/chat/completions \
-  --model qwen3-32b --tokenizer qwen3-32b \
-  --num-requests 100 --input-len 1024 --output-len 128 \
-  --hit-rate 0.5 \        # target 50% (or --prefix-len 512)
-  --prefix-num 10 \       # 10 distinct prefixes -> 10 requests reuse each
-  --concurrency 20 \
+  --endpoint http://localhost:8000/v1 --model qwen2.5-72b \
+  --num-requests 100 --input-len 4096 --output-len 128 \
+  --hit-rate 0.5 \                  # target 50% (or --prefix-len 2048)
+  --prefix-num 10 \
   --metrics-endpoint http://localhost:8000/metrics --backend vllm \
   --reset-cache
 ```
 
-How it works (borrowed from aisbench / vLLM `prefix_repetition`):
-- Each request = `[shared prefix] + [3 boundary tokens] + [unique suffix]`. The
-  boundary tokens force the cache to stop at exactly `prefix_len`, so the hit is
-  precisely the shared portion.
-- `--prefix-num` distinct prefixes are assigned round-robin and **shuffled** so
-  reuse happens under concurrency (not back-to-back duplicates).
-- `--prefill` (default on) injects each distinct prefix with `output_len=1`
-  before measuring, so even the first request per prefix hits.
-- The summary prints **TARGET vs MEASURED** hit rate (measured from
-  `vllm:prefix_cache_hits_total`/`queries_total` deltas), per-engine breakdown,
-  and TTFT/TPOT percentiles.
+The summary prints **TARGET vs MEASURED** hit rate (measured from `vllm:prefix_cache_hits_total`/`queries_total` deltas) plus a per-engine breakdown.
 
-`--hit-rate` (fraction) and `--prefix-len` (absolute) are mutually exclusive;
-one derives the other from `--input-len`.
-
-### SLO capacity sweep mode (find max concurrent users)
-
-Specify TTFT/TPOT SLO targets; ClawPerf sweeps concurrency (closed-loop, each
-user sends back-to-back multi-turn requests) and finds the **max users** the
-system can sustain while meeting the SLO. Reuses the scenario workload
-(system/user prefix, input/output per turn, max_context, compaction).
+### slo — max concurrency under SLO
 
 ```bash
 clawperf --mode slo \
-  --endpoint http://localhost:8000/v1/chat/completions \
-  --model qwen3-32b --tokenizer qwen3-32b \
+  --endpoint http://localhost:8000/v1 --model qwen2.5-72b \
   --slo-ttft-ms 500 --slo-tpot-ms 30 \   # P99 must be ≤ these
-  --slo-percentile 0.99 \                 # P99 (or 0.95/0.90)
   --slo-min-users 1 --slo-max-users 200 \
-  --slo-step-strategy geometric \         # double each step (or linear)
-  --slo-step-turns 5 --slo-step-warmup-turns 1 \
-  --system-prefix-tokens 15000 --input-tokens-per-turn 5000 \
-  --output-tokens-per-turn 1000 --max-context-tokens 128000 \
-  --backend vllm --reset-cache
+  --slo-step-strategy geometric \
+  --output results_slo.json
 ```
 
-How it works:
-- **Geometric ramp** (1→2→4→8→…) finds the knee region fast; at each N it runs
-  `warmup + measure` turns per user and checks P{slo_percentile} TTFT/TPOT.
-- **Binary refine** between the last-good and first-bad N pinpoints the exact max.
-- Optional `--slo-error-rate` caps the error rate; `--slo-step-timeout-s` aborts
-  a step if the server is overloaded.
-- `--slo-step-reset-cache` (default on) isolates each step; turn it off to test
-  sustained pressure.
-- Output: a **capacity curve** (N vs P99 TTFT/TPOT/error/SLO-met) and the
-  `Max sustained users` verdict.
+Output: a capacity curve (users vs P99 TTFT/TPOT/error/SLO-met) and the max sustained users.
 
-### Agent-at-work mode (real coding-agent perf)
+### agent — real coding agent
 
-Run the model as a **real coding agent** — it reads/writes files and runs shell
-commands via OpenAI function-calling, multi-turn, with growing context. N tasks
-run concurrently; we measure per-turn TTFT/TPOT/tokens, per-task wall time, and
-the **real prefix-cache hit rate** from `/metrics`. Purely performance, no
-accuracy grading. Requires the backend to support tool-calling (e.g. Qwen/GLM
-on vLLM).
+Requires the backend to support tool calling (e.g. `vllm serve ... --enable-auto-tool-choice --tool-call-parser qwen3_xml`).
 
 ```bash
-pip install clawperf[agent]   # installs the openai SDK used by agent mode
-
 clawperf --mode agent \
-  --endpoint http://localhost:8000/v1/chat/completions \
-  --model qwen3-32b --tokenizer qwen3-32b \
-  --agent-tasks 10 \               # 10 concurrent agent task instances
-  --agent-max-steps 12 \           # per-task LLM turn cap
-  --agent-max-tokens 512 \         # max generation per turn
-  --metrics-endpoint http://localhost:8000/metrics --backend vllm \
-  --reset-cache
+  --endpoint http://localhost:8000/v1 --model qwen3 \
+  --agent-tasks 10 \
+  --agent-max-steps 12 --agent-max-tokens 512 \
+  --metrics-endpoint http://localhost:8000/metrics --backend vllm
 ```
 
-Tasks: the built-in preset bank (small coding tasks: fix a bug, add a function,
-edit a config) is used by default; or supply your own with `--agent-task-file
-tasks.jsonl` (one `{"prompt", "workspace": {"path":"content"}, "max_steps"}`
-per line). Each task instance gets its own workspace dir (concurrent agents
-never collide). Output: per-task table (steps/finished/wall/tokens) + per-turn
-TTFT percentiles + measured prefix-cache hit rate.
+Custom tasks via `--agent-task-file` (one `{"prompt", "workspace": {"path":"content"}, "max_steps"}` per line).
 
-## CLI Options
-
-### User Configuration
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--num-users` | 1 | Total concurrent users |
-| `--user-arrival` | burst | Arrival pattern: `burst`, `steady:<seconds>`, or `poisson:<lambda>` |
-
-### Context Configuration
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--system-prefix-tokens` | 15000 | System prefix token count |
-| `--system-prefix-source` | random | Source: `random` or a file path |
-| `--user-prefix-tokens` | 5000 | Per-user prefix token count |
-| `--input-tokens-per-turn` | 5000 | Input tokens per turn |
-| `--output-tokens-per-turn` | 1000 | Output tokens per turn |
-| `--max-context-tokens` | 128000 | Context window limit |
-| `--compaction-prefix-increment` | 5000 | User prefix growth on compaction |
-
-### Run Configuration
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--max-turns` | 100 | Maximum turns per user |
-
-### API Configuration
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--endpoint` | (required) | LLM API endpoint URL |
-| `--model` | (required) | Model name |
-| `--api-key` | (empty) | API key |
-| `--tokenizer` | (defaults to model) | Tokenizer path |
-| `--ignore-eos` | True | Ignore EOS token |
-| `--request-timeout` | 600 | Request timeout in seconds |
-
-### System Metrics
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--metrics-endpoint` | None | Prometheus metrics URL. Only start+end snapshots are taken. |
-| `--metrics-interval` | 5 | Polling interval (s) for periodic time-series; only with `--metrics-samples` |
-| `--metrics-samples` | False | Collect periodic metrics throughout the run (extra `/metrics` calls) |
-| `--reset-cache` | False | Evict the server's prefix cache before the start snapshot (`/reset_prefix_cache` for vLLM, `/flush_cache` for SGLang) so the measured hit rate reflects only this benchmark |
-| `--backend` | vllm | Backend: `vllm`, `sglang`, or `mindie` |
-
-> A pre-flight health check (one tiny request) runs before content generation and aborts early if the endpoint is unreachable, so you don't burn minutes producing an all-error run.
-
-### Output
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--output` | results.json | Output JSON file path |
-| `--history` | clawperf_history.jsonl | Append a one-line record (config + summary + per-user aggregates) to this JSONL file on every run, accumulating results across runs. Pass an empty string to disable. |
-
-## Output Format
-
-Results are saved as JSON with:
-
-```json
-{
-  "config": { ... },
-  "summary": {
-    "prefix_cache_token_hit_rate": 0.7981,
-    "prefix_cache_hit_tokens_delta": 712012,
-    "prefix_cache_query_tokens_delta": 892165,
-    "total_compactions": 0,
-    ...
-  },
-  "users": [
-    {
-      "user_id": 0,
-      "aggregate": {
-        "total_output_tokens": 3000,
-        "ttft": { "avg": 150.2, "P50": 140, "P99": 200 },
-        "tpot": { "avg": 3.2, "P50": 3.0, "P99": 5.0 },
-        "throughput_tok_s": 12.5,
-        "error_count": 0,
-        "compaction_count": 2
-      },
-      "turns": [
-        {
-          "turn_id": 1,
-          "success": true,
-          "ttft_ms": 150.2,
-          "e2e_latency_ms": 3200.5,
-          "tpot_ms": 3.2,
-          "input_tokens": 25000,
-          "output_tokens": 1000,
-          "context_tokens": 25000,
-          "compaction_triggered": false,
-          "wall_start_ts": 0.016,
-          "wall_end_ts": 3.354
-        }
-      ]
-    }
-  ],
-  "system_metrics": [ ... ],
-  "timeline": [ ... ],
-  "timing": {
-    "setup_time_s": 7.437,
-    "bench_time_s": 12.281
-  }
-}
-```
-
-`timing.bench_time_s` excludes one-time setup (tokenizer download + content
-generation); per-turn `wall_start_ts`/`wall_end_ts` are offsets from the
-benchmark start and back the per-user duration/throughput aggregates.
-
-## Result History
-
-Every run appends one compact JSON line to `clawperf_history.jsonl` (configurable
-via `--history`, disable with `--history ""`). Each line carries the run
-`timestamp`, the full `config`, the `summary`, `timing`, and per-user
-`aggregate`s — but not the heavy per-turn arrays, so the file stays queryable
-as runs accumulate.
-
-Collect and compare results across runs with standard tooling:
+### trace — KV-cache analysis + real replay
 
 ```bash
-# Latest run's hit rate
-tail -n1 clawperf_history.jsonl | jq '.summary.prefix_cache_token_hit_rate'
+# Local simulation only (no endpoint needed): hit rate at a given budget,
+# plus a budget sweep to find the inflection point.
+clawperf --mode trace --trace-file trace.jsonl --budget-sweep
 
-# Throughput trend over all runs
-jq -c '{users: .config.num_users, bench_s: .timing.bench_time_s,
-        hit_rate: .summary.prefix_cache_token_hit_rate}' clawperf_history.jsonl
+# Trace with messages → also replays real requests against the endpoint.
+clawperf --mode trace \
+  --trace-file trace.jsonl \
+  --endpoint http://localhost:8000/v1 --model qwen3 \
+  --trace-users 3                    # session-aware concurrency
 ```
 
-The full per-turn detail for any run is still in its `--output` JSON file,
-referenced from each history record's `output_file` field.
+### record & replay — capture a real agent session, then replay it
 
-## Testing Philosophy
+```bash
+# Terminal 1: start the recording proxy (agents point their base URLs here)
+clawperf --mode record --upstream-endpoint http://localhost:8000 \
+  --proxy-port 9090 --recording session.jsonl
 
-ClawPerfBench is designed to simulate the **real workload of an Agent system** — not single-shot API calls, but sustained multi-turn conversations that push LLM serving backends to their limits.
+# Point Claude Code at the proxy, work for a while, Ctrl+C.
+# Terminal 2: replay the recording against any endpoint with live history.
+clawperf --mode replay \
+  --recording session.jsonl \
+  --endpoint http://localhost:8000/v1 --model qwen3 \
+  --history-mode live
+```
 
-### Why multi-turn matters
+### report & compare
 
-Real Agent systems (like OpenClaw) don't send one-off requests. They maintain long conversations: a system prompt, user-specific context, and growing history. Each turn re-sends the entire accumulated context, creating exponentially growing prompts. This is fundamentally different from single-request benchmarks and exposes backend behaviors that single-shot tests miss:
+```bash
+clawperf report results.json                       # → results.md
+clawperf compare run_a.json run_b.json --label-a vLLM --label-b SGLang
+```
 
-- **Prefix cache effectiveness**: Does the KV-block cache actually reuse tokens across turns? A single-request benchmark can't measure this.
-- **Compaction under load**: When context hits the window limit, how does the system handle truncation? Does it recover gracefully or spiral into overflow?
-- **Latency degradation**: As context grows from 25K to 200K tokens, TTFT and TPOT change dramatically. Per-turn metrics reveal this progression.
-- **Concurrent pressure**: Multiple users with independent conversations create mixed prefix cache states — some sharing the system prefix, others diverging at user-specific paths.
+## Trace Datasets
 
-### Simulating real users
+ClawPerf consumes the major trace formats used by the agent ecosystem:
 
-Each simulated user maintains an independent conversation state with its own growing prefix and history. Users arrive according to configurable patterns (burst, steady, Poisson) — mimicking how real traffic builds up, not an artificial flood of identical requests.
+| Format | Structure | Examples |
+|--------|-----------|----------|
+| **kvcache.ai** (native) | `{hash_ids, input_length, block_size?, user_id?}` | kvcache.ai hit-rate simulator |
+| **Claude Code sessions** | line-per-message with Anthropic content blocks | Fable-5-traces, kimi-k2.6-claude-code-traces |
+| **ShareGPT / Hermes** | `{conversations: [{from: human\|gpt\|system, value}]}` | vLLM & LMCache benchmarks, carnice traces, CodexBench |
+| **OpenAI messages** | `{messages: [{role, content, tool_calls}]}` | generic API exports |
 
-### What we measure
+Convert external datasets with `trace-convert`, then run `--mode trace`:
 
-| What | Why it matters |
-|------|---------------|
-| TTFT per turn | First-token latency grows with context size — the key UX metric for Agent systems |
-| TPOT per turn | Generation speed should stay stable; degradation indicates compute bottlenecks |
-| Prefix cache hit rate | Token-level reuse fraction across turns — the efficiency metric for KV caching |
-| Compaction events | When and how often context overflows — determines conversation continuity |
-| Per-user breakdown | Different users have different prefix paths; aggregate stats hide per-user variance |
+```bash
+clawperf trace-convert session.jsonl sharegpt.jsonl \
+  --output trace.jsonl --max-turns 4
+```
 
-## Context Model
+Trace files you can try right away (ModelScope):
 
-Each user's context follows this structure:
+```bash
+clawperf trace-convert \
+  https://www.modelscope.cn/datasets/Glint-Research/Fable-5-traces/... \
+  ...
+```
 
-![Context model and compaction](docs/context_model.svg)
+## Configuration
 
-When context reaches `--max-context-tokens`, append-mode compaction fires:
+Precedence: **CLI args (explicit) > `CLAWPERF_*` env vars > YAML (`--config`) > dataclass defaults.**
 
-1. The base context (system + user prefix + input, without history) is checked first. If it already exceeds the limit, compaction is skipped and the turn is marked as `context_overflow` — this prevents infinite compaction loops.
-2. Otherwise, history is cleared and the user prefix grows by `--compaction-prefix-increment` tokens.
-3. New random content fills the enlarged user prefix.
-4. If the grown base still exceeds the limit, the prefix growth is **reverted** (history cleared only) so the user isn't permanently trapped in overflow.
+```bash
+export CLAWPERF_ENDPOINT=http://localhost:8000/v1
+export CLAWPERF_MODEL=qwen3
+export CLAWPERF_MAX_TURNS=20
+clawperf --config config.yaml       # YAML may also carry any of these keys
+```
 
-This simulates how real LLM serving systems handle context overflow with prefix caching.
+Example `config.yaml`:
 
-## Prefix Cache Simulation
+```yaml
+mode: scenario
+context_profile: medium
+num_users: 8
+max_turns: 20
+metrics_endpoint: http://localhost:8000/metrics
+backend: vllm
+```
 
-The mock server simulates vLLM's KV-block prefix cache using a trie:
+### Context profiles & suites
 
-- **HBM trie**: Represents GPU KV cache. Queried first for longest prefix match. Always updated after every request (mimicking vLLM storing all KV blocks regardless of hit/miss).
-- **External trie**: Represents CPU/disk prefix cache. Queried on HBM miss. Also always updated after every request.
-- **Token-level hit rate**: `prefix_cache_hit_tokens / prefix_cache_query_tokens` — the fraction of prompt tokens that reuse cached KV blocks. This is the meaningful metric; request-level (binary) hit rate is not reported.
-- **Eviction**: When the trie exceeds `max_prefixes` (200), oldest leaf nodes are evicted.
+| Profile | sys+usr+in (tokens) | | Suite | users × profiles |
+|---------|---------------------|-|-------|------------------|
+| `fresh` | 7K | | `quick` | [1,4,8] × fresh |
+| `short` | 22K | | `standard` | [1,8,16,32] × medium+long |
+| `medium` | 43K | | `full` | [1,4,8,16,32,64] × fresh→full |
+| `long` | 75K | | `hitrate` | [1] × fresh→full |
+| `full` | 105K | | | |
+| `xl` | 205K | | | |
+| `xxl` | 392K | | | |
 
-## User Arrival Scheduling
+`--model-context-length` skips profiles whose base context exceeds the model window.
 
-![User arrival patterns](docs/arrival_patterns.svg)
+### Key options by mode
 
-- **burst**: All users start immediately
-- **steady:2**: Users arrive every 2 seconds
-- **poisson:0.5**: Users arrive following a Poisson process with rate 0.5
+| Mode | Core options |
+|------|--------------|
+| All | `--endpoint --model --api-key --request-timeout --output --verbose --config` |
+| scenario | `--num-users --user-arrival --context-profile` or raw `--system-prefix-tokens/--user-prefix-tokens/--input-tokens-per-turn`, `--max-turns --max-context-tokens --compaction-prefix-increment --suite --max-consecutive-failures` |
+| hitrate | `--num-requests --input-len --output-len --hit-rate` or `--prefix-len`, `--prefix-num --prefill/--no-prefill --seed` |
+| slo | `--slo-ttft-ms/--slo-tpot-ms --slo-percentile --slo-error-rate --slo-min-users --slo-max-users --slo-step-*` |
+| agent | `--agent-tasks --agent-task-file --agent-max-steps --agent-max-tokens --agent-shell-timeout --agent-workdir` |
+| record | `--upstream-endpoint --proxy-port --recording --upstream-api` |
+| replay | `--recording --history-mode live\|verbatim` |
+| trace | `--trace-file --cache-budget-tokens/--cache-budget-gb --eviction-policy --trace-block-size --budget-sweep --trace-users --kv-bytes-per-token` |
+| Shared concurrency | `--concurrency` (request-level: hitrate/replay/trace); `--trace-users` (session-level: trace) |
+| Metrics | `--metrics-endpoint --metrics-interval --metrics-samples --reset-cache --backend` |
+
+## Output
+
+Every run produces:
+- **JSON** (`--output`, default `results_<timestamp>.json`) — config, summary, per-user/per-turn detail (mode-specific), system metrics, timeline.
+- **Markdown report** (`<output>.md`) — verdict ✅/⚠️/❌, auto-generated key findings, per-mode summary tables, ASCII TTFT scaling chart, budget sweep / real replay sections for trace mode.
+
+Example verdict section:
+
+```markdown
+## Verdict: ✅ GOOD
+
+- **TTFT (P50):** 180ms — instant (GOOD)
+- **Decode throughput:** 114.8 tok/s — smooth (GOOD)
+```
+
+### Result history
+
+Every run appends one compact line to `clawperf_history.jsonl` (config + summary + per-user aggregates, no heavy per-turn arrays). Queryable with `jq`:
+
+```bash
+tail -n1 clawperf_history.jsonl | jq '.summary.prefix_cache_token_hit_rate'
+```
 
 ## Architecture
 
-ClawPerf reuses EvalScope's core perf components:
-
-- **AioHttpClient**: Async HTTP with streaming, proper timeout/connector config
-- **OpenaiPlugin**: Request building, response parsing, local token counting
-- **BenchmarkData**: Single-request data container (TTFT, ITL, E2E timing)
-- **MetricsAccumulator**: Real-time metrics aggregation
-
-And adds its own orchestration layer for multi-turn, multi-user workloads.
-
-Key modules:
-
 | Module | Role |
 |--------|------|
-| `cli.py` | Argparse entry point, config creation, runner launch |
-| `config.py` | `BenchmarkConfig` dataclass, arrival mode parsing |
-| `runner.py` | `BenchmarkRunner` orchestrator, user loop, result finalization, JSONL history |
-| `context.py` | `UserContext` context assembly, compaction with infinite-loop guard |
-| `scheduler.py` | Burst/steady/Poisson async generators |
-| `system_metrics.py` | `SystemMetricsPoller` with backend-specific metric mappings |
-| `tokenizer.py` | `TokenizerManager` wrapping ModelScope/HuggingFace tokenizers |
-| `logging_setup.py` | Centralized logging routed through `tqdm.write` |
-| `mock_server.py` | FastAPI mock LLM server with trie-based prefix cache simulation |
+| `cli.py` | Argparse entry point; mode dispatch; subcommands (report/compare/trace-convert); exit codes |
+| `config.py` | `BenchmarkConfig` dataclass; layered config (CLI > env > YAML); validation |
+| `context_profiles.py` | Named context profiles + suites |
+| `runner.py` | `BenchmarkRunner`: scenario/hitrate/slo/agent orchestration, results finalization |
+| `context.py` | `UserContext`: context assembly + compaction with infinite-loop guard |
+| `scheduler.py` | Burst/steady/Poisson user arrival generators |
+| `player.py` | `ReplayPlayer`: streaming replay engine (live/verbatim, session-aware concurrency) |
+| `trace_simulator.py` | Prefix-cache simulation (LRU/FIFO, budget sweep) + trace replay (via player) |
+| `trace_converter.py` | External trace conversion (Claude Code / ShareGPT / OpenAI) |
+| `recorder.py` | Recording proxy (FastAPI, Anthropic↔OpenAI translation on the fly) |
+| `translators.py` | Anthropic↔OpenAI message/tool/SSE translation, endpoint normalization |
+| `agent.py` | Real coding-agent loop with tool calls + reasoning-token detection |
+| `agent_tasks.py` | Preset agent task bank + workspace materialization |
+| `system_metrics.py` | Prometheus polling, prefix-cache delta math (HBM+external, per-engine) |
+| `mock_server.py` | Standalone mock LLM server (trie prefix cache, `/metrics`) |
+| `report.py` | Markdown reports, verdicts, comparisons |
+
+## Testing Philosophy
+
+ClawPerf simulates the **real workload of an Agent system** — not single-shot API calls but sustained multi-turn conversations that push serving backends to their limits:
+
+- **Prefix cache effectiveness** — token-level reuse across turns (a single-request benchmark can't measure this).
+- **Compaction under load** — how the system recovers when context hits the window.
+- **Latency degradation** — TTFT/TPOT as context grows from 7K to 100K+ tokens.
+- **Concurrent pressure** — mixed prefix states from independent user conversations.
+- **Real traces** — replay actual agent sessions (Claude Code, ShareGPT, Codex) to measure the stack under the exact access patterns agents generate.
+
+## End-to-End Test Report
+
+See [docs/E2E_TEST_REPORT.md](docs/E2E_TEST_REPORT.md) for a full end-to-end
+run against a vLLM-Ascend endpoint covering all 7 modes + 3 subcommands
+(including real ModelScope trace replay). Raw per-mode results live in
+`results_e2e/`.
 
 ## Development
 
 ```bash
-uv sync --extra dev --extra mock-server
+pip install -e ".[dev]"
 pytest
-ruff check
+ruff check src/
 ```
 
 ## License

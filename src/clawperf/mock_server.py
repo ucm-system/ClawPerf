@@ -22,7 +22,7 @@ from typing import AsyncGenerator
 
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, StreamingResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
 app = FastAPI(title="ClawPerf Mock LLM", version="2.0.0")
 
@@ -410,28 +410,28 @@ async def metrics():
 
     lines = [
         "# HELP vllm:num_requests_running Number of requests currently running.",
-        f"# TYPE vllm:num_requests_running gauge",
+        "# TYPE vllm:num_requests_running gauge",
         f"vllm:num_requests_running{{model_name=\"mock\"}} {c['requests_running']}",
         "",
         "# HELP vllm:num_requests_waiting Number of requests waiting to be processed.",
-        f"# TYPE vllm:num_requests_waiting gauge",
+        "# TYPE vllm:num_requests_waiting gauge",
         f"vllm:num_requests_waiting{{model_name=\"mock\"}} {c['requests_waiting']}",
         "",
         "# HELP vllm:kv_cache_usage_perc Fraction of used KV cache blocks.",
         "# TYPE vllm:kv_cache_usage_perc gauge",
-        f"vllm:kv_cache_usage_perc{{model_name=\"mock\"}} 0.0",
+        "vllm:kv_cache_usage_perc{model_name=\"mock\"} 0.0",
         "",
         "# HELP vllm:prefix_cache_queries_total Total prompt tokens queried against the prefix cache.",
         "# TYPE vllm:prefix_cache_queries_total counter",
         f"vllm:prefix_cache_queries_total{{model_name=\"mock\",engine=\"0\"}} {c['prefix_cache_query_tokens']}",
         "# TYPE vllm:prefix_cache_queries_created gauge",
-        f"vllm:prefix_cache_queries_created{{model_name=\"mock\",engine=\"0\"}} 1782374641.0006",
+        "vllm:prefix_cache_queries_created{model_name=\"mock\",engine=\"0\"} 1782374641.0006",
         "",
         "# HELP vllm:prefix_cache_hits_total Total prompt tokens reused via the prefix cache.",
         "# TYPE vllm:prefix_cache_hits_total counter",
         f"vllm:prefix_cache_hits_total{{model_name=\"mock\",engine=\"0\"}} {c['prefix_cache_hit_tokens']}",
         "# TYPE vllm:prefix_cache_hits_created gauge",
-        f"vllm:prefix_cache_hits_created{{model_name=\"mock\",engine=\"0\"}} 1782374641.0007",
+        "vllm:prefix_cache_hits_created{model_name=\"mock\",engine=\"0\"} 1782374641.0007",
         "",
         "# HELP vllm:prefix_cache_evictions_total Total number of prefix cache evictions.",
         "# TYPE vllm:prefix_cache_evictions_total counter",

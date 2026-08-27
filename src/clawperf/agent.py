@@ -134,13 +134,22 @@ class AgentTools:
 @dataclass
 class TurnResult:
     """One LLM turn's perf + content."""
-    ttft_ms: Optional[float]        # time to first content chunk
+    ttft_ms: Optional[float]        # time to first *visible* content chunk
     e2e_ms: float                   # full turn wall time
     input_tokens: Optional[int]
     output_tokens: Optional[int]
     content: str
     tool_calls: List[Dict]           # [{id, name, arguments}]
     finish_reason: Optional[str]
+    # Reasoning / thinking token metrics (DeepSeek R1, o3, Claude Extended Thinking).
+    # These are populated when the streaming response contains reasoning_content
+    # or reasoning deltas. ttft_thinking_ms = time to first thinking token;
+    # ttft_visible_ms = time to first visible (non-thinking) token; when there
+    # is no thinking, ttft_thinking_ms is None and ttft_visible_ms == ttft_ms.
+    ttft_thinking_ms: Optional[float] = None
+    ttft_visible_ms: Optional[float] = None
+    thinking_tokens: int = 0
+    thinking_overhead_ms: float = 0.0
 
 
 class AgentClient:
@@ -173,7 +182,10 @@ class AgentClient:
     async def complete(self, messages: List[Dict], tools: List[Dict]) -> TurnResult:
         client = self._get()
         t0 = time.perf_counter()
-        ttft = None
+        ttft = None  # visible-content TTFT (what the user sees)
+        ttft_thinking = None  # thinking-token TTFT (first reasoning chunk)
+        thinking_start = None  # perf_counter at first thinking token
+        thinking_tokens = 0
         content_parts: List[str] = []
         # tool_calls arrive fragmented across chunks; accumulate per-index.
         tc_acc: Dict[int, Dict] = {}
@@ -188,9 +200,6 @@ class AgentClient:
         clean = {k: v for k, v in kwargs.items() if v is not None}
         stream = await client.chat.completions.create(**clean)
         async for chunk in stream:
-            if ttft is None:
-                # first chunk = request completed + first token on the wire
-                ttft = (time.perf_counter() - t0) * 1000
             choices = getattr(chunk, "choices", None) or []
             if not choices:
                 if getattr(chunk, "usage", None):
@@ -198,8 +207,35 @@ class AgentClient:
                 continue
             choice = choices[0]
             delta = getattr(choice, "delta", None)
+
+            # ── Reasoning / thinking token detection ──
+            # Backends expose thinking via different field names:
+            #   delta.reasoning_content  — DeepSeek R1, Qwen3
+            #   delta.reasoning         — some custom backends
+            # We count characters and estimate tokens (chars//4) since
+            # most backends don't include reasoning in the usage block.
+            reasoning_text = None
+            if delta:
+                reasoning_text = getattr(delta, "reasoning_content", None)
+                if not reasoning_text:
+                    reasoning_text = getattr(delta, "reasoning", None)
+            if reasoning_text:
+                now = time.perf_counter()
+                if ttft_thinking is None:
+                    ttft_thinking = (now - t0) * 1000
+                    thinking_start = now
+                thinking_tokens += len(reasoning_text) // 4  # rough estimate
+                continue  # thinking chunks don't carry visible content
+
+            # ── Visible content ──
             if delta and delta.content:
+                if ttft is None:
+                    now = time.perf_counter()
+                    ttft = (now - t0) * 1000
+                    # If we were thinking, the visible TTFT is the true
+                    # "time to first user-visible token."
                 content_parts.append(delta.content)
+
             if delta and delta.tool_calls:
                 for tc in delta.tool_calls:
                     idx = tc.index or 0
@@ -214,6 +250,14 @@ class AgentClient:
                 finish = choice.finish_reason
         e2e = (time.perf_counter() - t0) * 1000
 
+        # Thinking overhead = time from first thinking token to first visible
+        # token (or end of stream if no visible content was produced).
+        thinking_overhead = 0.0
+        if ttft_thinking is not None and ttft is not None:
+            thinking_overhead = ttft - ttft_thinking
+        elif ttft_thinking is not None and thinking_start is not None:
+            thinking_overhead = (time.perf_counter() - thinking_start) * 1000
+
         tool_calls = [
             {"id": v["id"] or f"call_{i}", "name": v["name"], "arguments": v["args"]}
             for i, v in sorted(tc_acc.items())
@@ -225,6 +269,10 @@ class AgentClient:
             content="".join(content_parts),
             tool_calls=tool_calls,
             finish_reason=finish,
+            ttft_thinking_ms=ttft_thinking,
+            ttft_visible_ms=ttft if ttft_thinking is not None else ttft,
+            thinking_tokens=thinking_tokens,
+            thinking_overhead_ms=thinking_overhead,
         )
 
 
@@ -248,6 +296,10 @@ class AgentTurnRecord:
     tool_calls: int
     tool_time_ms: float
     finish_reason: Optional[str]
+    ttft_thinking_ms: Optional[float] = None
+    ttft_visible_ms: Optional[float] = None
+    thinking_tokens: int = 0
+    thinking_overhead_ms: float = 0.0
 
 
 @dataclass
@@ -309,6 +361,10 @@ class Agent:
                 input_tokens=tr.input_tokens, output_tokens=tr.output_tokens,
                 tool_calls=len(tr.tool_calls), tool_time_ms=tool_ms,
                 finish_reason=tr.finish_reason,
+                ttft_thinking_ms=tr.ttft_thinking_ms,
+                ttft_visible_ms=tr.ttft_visible_ms,
+                thinking_tokens=tr.thinking_tokens,
+                thinking_overhead_ms=tr.thinking_overhead_ms,
             ))
 
             if not tr.tool_calls:
