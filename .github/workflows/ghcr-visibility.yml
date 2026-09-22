@@ -46,7 +46,7 @@ jobs:
           echo "===== GET /orgs/$OWNER/packages/container/$PACKAGE ====="
           gh api "/orgs/$OWNER/packages/container/$PACKAGE" 2>&1 | head -60 || true
 
-      - name: Try to set it public (org endpoint)
+      - name: Try the visibility endpoint (expected to be unsupported)
         env:
           PACKAGE: ${{ inputs.package || 'clawperf' }}
         run: |
@@ -56,8 +56,22 @@ jobs:
           gh api --method PATCH "/orgs/$OWNER/packages/container/$PACKAGE" \
             -f visibility=public 2>&1 | head -30 || true
           echo
+          echo "The GitHub Packages REST API has no visibility endpoint"
+          echo "(only list / get / delete / restore), so a 404 here is expected."
+          echo
           echo "===== visibility afterwards ====="
           gh api "/orgs/$OWNER/packages/container/$PACKAGE" --jq '.visibility' 2>&1 || true
+
+      - name: Where to change it
+        if: always()
+        env:
+          PACKAGE: ${{ inputs.package || 'clawperf' }}
+        run: |
+          set -euo pipefail
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          echo "Change it in the UI:"
+          echo "  https://github.com/orgs/$OWNER/packages/container/$PACKAGE/settings"
+          echo "  → Danger Zone → Change visibility → Public"
 
       - name: Summarise
         if: always()
