@@ -43,6 +43,14 @@ jobs:
           python3 scripts/check_site.py docs
           python3 scripts/check_diagrams.py docs/assets
 
+      - name: Install the package (for the reference-page drift check)
+        run: python -m pip install -e .
+
+      - name: The generated reference page matches the code
+        # docs/reference.html is generated from clawperf --help + the context
+        # profiles; a new/renamed flag without regenerating fails here.
+        run: python3 scripts/gen_reference.py --check
+
       - name: Lint the workflow files (actionlint)
         # Catches failure modes GitHub only reports as an instant "workflow
         # file issue" at run time — e.g. env keys differing only in case are

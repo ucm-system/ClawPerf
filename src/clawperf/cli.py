@@ -46,28 +46,40 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ── Context profile / suite (convenience layer) ──
     g = parser.add_argument_group("Context Profiles & Suites")
-    g.add_argument("--context-profile", type=str, default=None,
-                   help="Named context-size profile: fresh(6K), short(20K), medium(40K), "
-                        "long(70K), full(100K), xl(200K), xxl(400K). Overrides raw token counts.")
-    g.add_argument("--suite", type=str, default=None,
-                   help="Pre-configured suite: quick, standard, full, hitrate. "
-                        "Runs multiple (users × profile) scenarios in sequence.")
-    g.add_argument("--model-context-length", type=int, default=0,
+    g.add_argument("--context-profile", type=str, default=None, metavar="NAME",
+                   help="Named context-size profile (case-insensitive), overriding the raw "
+                        "token counts below: fresh, short, medium, long, full, xl, xxl "
+                        "(6K→400K base context; see the reference for the exact "
+                        "system/user/input split).")
+    g.add_argument("--suite", type=str, default=None, metavar="NAME",
+                   help="Pre-configured suite: quick, standard, full, hitrate. Runs "
+                        "multiple (users × profile) scenarios in sequence.")
+    g.add_argument("--model-context-length", type=int, default=0, metavar="TOKENS",
                    help="Model's max context window. Suite profiles exceeding this are "
                         "skipped, and trace-replay max_tokens is clamped so requests "
                         "fit the window (0=no limit).")
 
     # ── Hit-rate mode configuration ──
     g = parser.add_argument_group("Hit-Rate Mode (only with --mode hitrate)")
-    g.add_argument("--num-requests", type=int, default=100)
-    g.add_argument("--input-len", type=int, default=1024)
-    g.add_argument("--output-len", type=int, default=128)
-    g.add_argument("--prefix-len", type=int, default=0)
-    g.add_argument("--hit-rate", type=float, default=None)
-    g.add_argument("--prefix-num", type=int, default=1)
-    g.add_argument("--prefill", action="store_true", default=True)
-    g.add_argument("--no-prefill", action="store_false", dest="prefill")
-    g.add_argument("--seed", type=int, default=0)
+    g.add_argument("--num-requests", type=int, default=100,
+                   help="Total requests in the measure phase.")
+    g.add_argument("--input-len", type=int, default=1024,
+                   help="Total prompt length per request = shared prefix + boundary + unique suffix.")
+    g.add_argument("--output-len", type=int, default=128,
+                   help="Generated tokens per request (the prefill phase uses 1).")
+    g.add_argument("--prefix-len", type=int, default=0,
+                   help="Shared-prefix length in tokens (0 = derive it from --hit-rate).")
+    g.add_argument("--hit-rate", type=float, default=None,
+                   help="Target shared fraction 0..1; derives --prefix-len. Mutually "
+                        "exclusive with --prefix-len.")
+    g.add_argument("--prefix-num", type=int, default=1,
+                   help="Number of distinct prefixes; requests per prefix = N//prefix-num.")
+    g.add_argument("--prefill", action="store_true", default=True,
+                   help="Inject every distinct prefix into the KV cache before measuring.")
+    g.add_argument("--no-prefill", action="store_false", dest="prefill",
+                   help="Skip the prefill phase, measuring cold-cache behaviour.")
+    g.add_argument("--seed", type=int, default=0,
+                   help="Reproducibility seed for prompt construction.")
 
     # ── SLO mode configuration ──
     g = parser.add_argument_group("SLO Mode (only with --mode slo)")
@@ -91,23 +103,41 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--slo-percentile", type=float, default=0.99,
                    help="Percentile for the legacy --slo-ttft-ms/--slo-tpot-ms thresholds "
                         "(ignored when --slo constraints are given).")
-    g.add_argument("--slo-error-rate", type=float, default=None)
-    g.add_argument("--slo-min-users", type=int, default=1)
-    g.add_argument("--slo-max-users", type=int, default=100)
-    g.add_argument("--slo-step-strategy", type=str, default="geometric", choices=["geometric", "linear"])
-    g.add_argument("--slo-step-turns", type=int, default=5)
-    g.add_argument("--slo-step-warmup-turns", type=int, default=1)
-    g.add_argument("--slo-step-timeout-s", type=int, default=300)
-    g.add_argument("--slo-step-reset-cache", action="store_true", default=True)
-    g.add_argument("--no-slo-step-reset-cache", action="store_false", dest="slo_step_reset_cache")
+    g.add_argument("--slo-error-rate", type=float, default=None, metavar="FRACTION",
+                   help="Extra pass condition: the step's error rate must stay at or below "
+                        "this fraction (0..1), e.g. 0.01 = 1%.")
+    g.add_argument("--slo-min-users", type=int, default=1,
+                   help="Lowest concurrency level the sweep starts from.")
+    g.add_argument("--slo-max-users", type=int, default=100,
+                   help="Highest concurrency level the sweep may reach.")
+    g.add_argument("--slo-step-strategy", type=str, default="geometric", choices=["geometric", "linear"],
+                   help="How the sweep picks the next level: 'geometric' doubles (1→2→4→8, "
+                        "fast for large ranges), 'linear' increments by one level.")
+    g.add_argument("--slo-step-turns", type=int, default=5,
+                   help="Measured turns per user at each concurrency level.")
+    g.add_argument("--slo-step-warmup-turns", type=int, default=1,
+                   help="Unmeasured warm-up turns per user before each measured step.")
+    g.add_argument("--slo-step-timeout-s", type=int, default=300,
+                   help="Wall-clock budget for one step; a step that overruns is "
+                        "reported as TIMEOUT and fails the SLO.")
+    g.add_argument("--slo-step-reset-cache", action="store_true", default=True,
+                   help="Evict the server's prefix cache before each step so every "
+                        "level starts cold.")
+    g.add_argument("--no-slo-step-reset-cache", action="store_false", dest="slo_step_reset_cache",
+                   help="Keep the cache warm across steps, measuring steady-state reuse.")
 
     # ── Agent mode configuration ──
     g = parser.add_argument_group("Agent Mode (only with --mode agent)")
-    g.add_argument("--agent-tasks", type=int, default=4)
-    g.add_argument("--agent-task-file", type=str, default=None)
-    g.add_argument("--agent-max-steps", type=int, default=12)
-    g.add_argument("--agent-max-tokens", type=int, default=512)
-    g.add_argument("--agent-shell-timeout", type=int, default=30)
+    g.add_argument("--agent-tasks", type=int, default=4,
+                   help="Number of coding tasks to run concurrently.")
+    g.add_argument("--agent-task-file", type=str, default=None,
+                   help="JSON/YAML file with custom tasks (default: the built-in presets).")
+    g.add_argument("--agent-max-steps", type=int, default=12,
+                   help="Max tool-calling steps per task before it is cut off.")
+    g.add_argument("--agent-max-tokens", type=int, default=512,
+                   help="Max generated tokens per model call inside a task.")
+    g.add_argument("--agent-shell-timeout", type=int, default=30,
+                   help="Seconds a single shell command the agent runs may take.")
     g.add_argument("--agent-workdir", type=str, default=None,
                    help="Base dir for per-task workspaces (default: a temp dir).")
 
@@ -167,17 +197,30 @@ def build_parser() -> argparse.ArgumentParser:
     g = parser.add_argument_group("User Configuration")
     g.add_argument("--num-users", type=int, default=1, help="Total concurrent users.")
     g.add_argument("--user-arrival", type=str, default="burst",
-                   help="'burst', 'steady:<seconds>', or 'poisson:<lambda>'.")
+                   help="'burst' (all sessions at once), 'steady:<seconds>' (one new "
+                        "session every N seconds), or 'poisson:<lambda>' (Poisson arrivals).")
 
     # ── Context configuration ──
     g = parser.add_argument_group("Context Configuration")
-    g.add_argument("--system-prefix-tokens", type=int, default=15000)
-    g.add_argument("--system-prefix-source", type=str, default="random")
-    g.add_argument("--user-prefix-tokens", type=int, default=5000)
-    g.add_argument("--input-tokens-per-turn", type=int, default=5000)
-    g.add_argument("--output-tokens-per-turn", type=int, default=1000)
-    g.add_argument("--max-context-tokens", type=int, default=128000)
-    g.add_argument("--compaction-prefix-increment", type=int, default=5000)
+    g.add_argument("--system-prefix-tokens", type=int, default=15000,
+                   help="Shared system prompt every user starts with (the bulk of the "
+                        "context). Overridden by --context-profile/--suite.")
+    g.add_argument("--system-prefix-source", type=str, default="random",
+                   help="'random' (synthesised filler) or a file path whose contents "
+                        "become the system prefix.")
+    g.add_argument("--user-prefix-tokens", type=int, default=5000,
+                   help="Per-user distinct prefix (each user has its own, so prefix "
+                        "caching does not trivially hit).")
+    g.add_argument("--input-tokens-per-turn", type=int, default=5000,
+                   help="New user content appended every turn.")
+    g.add_argument("--output-tokens-per-turn", type=int, default=1000,
+                   help="Max generated tokens per turn (with --ignore-eos this is the "
+                        "decode length actually measured).")
+    g.add_argument("--max-context-tokens", type=int, default=128000,
+                   help="Window at which append-mode compaction triggers (must fit the "
+                        "model's real context window).")
+    g.add_argument("--compaction-prefix-increment", type=int, default=5000,
+                   help="Tokens appended to the compacted prefix each time compaction runs.")
 
     # ── Run configuration ──
     g = parser.add_argument_group("Run Configuration")
@@ -193,7 +236,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Request-level concurrency: in-flight requests for "
                         "hitrate measure phase, replay, and trace real replay "
                         "(no user ids). For trace sessions use --trace-users.")
-    g.add_argument("--max-turns", type=int, default=100)
+    g.add_argument("--max-turns", type=int, default=100,
+                   help="Turns (round trips) per user in scenario mode; --suite overrides it.")
     g.add_argument("--max-consecutive-failures", type=int, default=0,
                    help="Abort the benchmark after this many consecutive failures (0=disabled).")
 
@@ -210,9 +254,13 @@ def build_parser() -> argparse.ArgumentParser:
                         "directory is loaded strictly offline (no hub lookup); "
                         "CLAWPERF_TOKENIZER_BACKEND=transformers|modelscope forces a "
                         "backend.")
-    g.add_argument("--ignore-eos", action="store_true", default=True)
-    g.add_argument("--no-ignore-eos", action="store_false", dest="ignore_eos")
-    g.add_argument("--request-timeout", type=int, default=600)
+    g.add_argument("--ignore-eos", action="store_true", default=True,
+                   help="Ask the server to ignore EOS so every request decodes its full "
+                        "output length (the fair way to compare throughput).")
+    g.add_argument("--no-ignore-eos", action="store_false", dest="ignore_eos",
+                   help="Let the model stop naturally at EOS (realistic chat latencies).")
+    g.add_argument("--request-timeout", type=int, default=600,
+                   help="Per-request timeout in seconds.")
     g.add_argument("--no-preflight", action="store_false", dest="preflight", default=True,
                    help="Skip the pre-flight probe (the one tiny request sent before a "
                         "run to catch a wrong endpoint/model). Use it when the server "
@@ -230,10 +278,16 @@ def build_parser() -> argparse.ArgumentParser:
                         "prefill/decode instance exposes its own /metrics — counters are "
                         "summed into one fleet-wide view with a per-instance engine "
                         "breakdown. Optional label via 'name=url' (default: host:port).")
-    g.add_argument("--metrics-interval", type=int, default=5)
-    g.add_argument("--metrics-samples", action="store_true", default=False)
-    g.add_argument("--reset-cache", action="store_true", default=False)
-    g.add_argument("--backend", type=str, default="vllm", choices=["vllm", "sglang", "mindie"])
+    g.add_argument("--metrics-interval", type=int, default=5,
+                   help="Seconds between periodic /metrics polls (only with --metrics-samples).")
+    g.add_argument("--metrics-samples", action="store_true", default=False,
+                   help="Poll /metrics periodically during the run, not just at start/end "
+                        "(adds a little background traffic).")
+    g.add_argument("--reset-cache", action="store_true", default=False,
+                   help="Evict the server's prefix cache before the run so the measured "
+                        "hit rate reflects only this benchmark.")
+    g.add_argument("--backend", type=str, default="vllm", choices=["vllm", "sglang", "mindie"],
+                   help="Serving backend, which selects the Prometheus metric names to read.")
 
     # ── Output ──
     g = parser.add_argument_group("Output")
@@ -243,7 +297,8 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--history", type=str, default=None,
                    help="Append a one-line record to this JSONL file per run. "
                         "Env: CLAWPERF_HISTORY. Pass '' to disable.")
-    g.add_argument("-v", "--verbose", action="store_true", default=False)
+    g.add_argument("-v", "--verbose", action="store_true", default=False,
+                   help="Log every request instead of a progress bar (useful in CI logs).")
 
     # ── Config file ──
     g = parser.add_argument_group("Configuration Files")

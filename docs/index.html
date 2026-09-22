@@ -207,6 +207,7 @@
       <a href="#results"><span class="en">Results</span><span class="zh">实测结果</span></a>
       <a href="#start"><span class="en">Quick start</span><span class="zh">快速开始</span></a>
       <a href="#config"><span class="en">Config</span><span class="zh">配置</span></a>
+      <a href="reference.html"><span class="en">Reference</span><span class="zh">完整参考</span></a>
       <a href="https://github.com/ucm-system/ClawPerf">GitHub</a>
     </nav>
     <div class="toggles">
@@ -224,6 +225,7 @@
 
   <div class="cta">
     <a class="btn primary" href="#start"><span class="en">Get started</span><span class="zh">快速开始</span></a>
+    <a class="btn" href="reference.html"><span class="en">Full reference</span><span class="zh">完整参考</span></a>
     <a class="btn" href="https://github.com/ucm-system/ClawPerf">GitHub</a>
     <a class="btn" href="https://github.com/ucm-system/ClawPerf/releases"><span class="en">Releases &amp; images</span><span class="zh">发行版与镜像</span></a>
     <a class="btn" href="https://github.com/ucm-system/ClawPerf/blob/main/docs/E2E_TEST_REPORT.md"><span class="en">E2E test report</span><span class="zh">端到端测试报告</span></a>
@@ -232,7 +234,7 @@
   <div class="stats">
     <div class="stat"><b>7</b><span class="en">benchmark modes</span><span class="zh">基准模式</span></div>
     <div class="stat"><b>4</b><span class="en">backends: vLLM · SGLang · MindIE · vllm-ascend</span><span class="zh">后端：vLLM · SGLang · MindIE · vllm-ascend</span></div>
-    <div class="stat"><b>290</b><span class="en">unit tests in CI</span><span class="zh">CI 单元测试</span></div>
+    <div class="stat"><b>300+</b><span class="en">unit tests in CI</span><span class="zh">CI 单元测试</span></div>
     <div class="stat"><b>amd64 + arm64</b><span class="en">native multi-arch images</span><span class="zh">原生双架构镜像</span></div>
   </div>
 </div>
@@ -451,14 +453,35 @@ clawperf --mode scenario \
     </div>
 
     <div class="card" style="margin-top:16px">
-      <h3><span class="en">Context profiles</span><span class="zh">上下文档位</span></h3>
-      <p class="en">Named sizes so you do not have to invent token counts, from <code class="inline">fresh</code> (7K) to <code class="inline">xxl</code> (392K). Suites run several (users × profile) combinations in sequence.</p>
-      <p class="zh">预设规模，免去自己拼 token 数：从 <code class="inline">fresh</code>（7K）到 <code class="inline">xxl</code>（392K）。suite 会按 (用户数 × 档位) 依次跑多组场景。</p>
+      <h3><span class="en">Context profiles — the whole set</span><span class="zh">上下文档位 —— 全部档位</span></h3>
+      <p class="en">Named sizes so you do not have to invent token counts. A profile sets the shared system prefix, the per-user prefix and the per-turn input at once.</p>
+      <p class="zh">预设规模，免去自己拼 token 数。一个档位同时设定共享系统前缀、每用户前缀与每轮输入三个数字。</p>
+      <div class="tbl-scroll" style="margin-top:12px">
+        <table>
+          <thead>
+            <tr>
+              <th><span class="en">Profile</span><span class="zh">档位</span></th>
+              <th><span class="en">system prefix</span><span class="zh">系统前缀</span></th>
+              <th><span class="en">user prefix</span><span class="zh">用户前缀</span></th>
+              <th><span class="en">input / turn</span><span class="zh">每轮输入</span></th>
+              <th><span class="en">base context</span><span class="zh">基础上下文</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><code class="inline">fresh</code></td><td>4,000</td><td>1,500</td><td>1,500</td><td><b>7K</b> — <span class="en">smoke test</span><span class="zh">冒烟测试</span></td></tr>
+            <tr><td><code class="inline">short</code></td><td>14,000</td><td>5,000</td><td>3,000</td><td><b>22K</b> — <span class="en">short chat, a few tool calls</span><span class="zh">短对话 + 少量工具调用</span></td></tr>
+            <tr><td><code class="inline">medium</code></td><td>28,000</td><td>10,000</td><td>5,000</td><td><b>43K</b> — <span class="en">typical coding session</span><span class="zh">典型编码会话</span></td></tr>
+            <tr><td><code class="inline">long</code></td><td>50,000</td><td>18,000</td><td>7,000</td><td><b>75K</b> — <span class="en">many files + history</span><span class="zh">多文件 + 长历史</span></td></tr>
+            <tr><td><code class="inline">full</code></td><td>72,000</td><td>25,000</td><td>8,000</td><td><b>105K</b> — <span class="en">approaching a 100K window</span><span class="zh">接近 100K 窗口</span></td></tr>
+            <tr><td><code class="inline">xl</code></td><td>150,000</td><td>45,000</td><td>10,000</td><td><b>205K</b> — <span class="en">prefill stress</span><span class="zh">预填充压力</span></td></tr>
+            <tr><td><code class="inline">xxl</code></td><td>300,000</td><td>80,000</td><td>12,000</td><td><b>392K</b> — <span class="en">near the largest windows</span><span class="zh">接近最大窗口</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="en" style="margin-top:12px"><code class="inline">--context-profile medium</code> picks one size. To sweep sizes use <code class="inline">--suite</code>, which runs the (users × profile) cross-product in sequence: <code class="inline">quick</code> (3 user counts × fresh), <code class="inline">standard</code> (4 × medium+long), <code class="inline">full</code> (6 × fresh→full), <code class="inline">hitrate</code> (1 × fresh→full). <code class="inline">--model-context-length</code> skips profiles that cannot fit the model window.</p>
+      <p class="zh" style="margin-top:12px"><code class="inline">--context-profile medium</code> 只选一个档位；要扫描多个档位请用 <code class="inline">--suite</code>，它按序跑完（用户 × 档位）笛卡尔积：<code class="inline">quick</code>（3 个并发档 × fresh）、<code class="inline">standard</code>（4 × medium+long）、<code class="inline">full</code>（6 × fresh→full）、<code class="inline">hitrate</code>（1 × fresh→full）。<code class="inline">--model-context-length</code> 会跳过放不进模型窗口的档位。</p>
       <p style="margin-top:12px">
-        <span class="pill">fresh 7K</span><span class="pill">short 22K</span><span class="pill">medium 43K</span><span class="pill">long 75K</span><span class="pill">full 105K</span><span class="pill">xl 205K</span><span class="pill">xxl 392K</span>
-      </p>
-      <p style="margin-top:6px">
-        <span class="pill ok">suite quick</span><span class="pill ok">suite standard</span><span class="pill ok">suite full</span><span class="pill ok">suite hitrate</span>
+        <a class="btn" href="reference.html#profiles"><span class="en">Full reference: profiles, suites, every parameter →</span><span class="zh">完整参考：档位、套件、全部参数 →</span></a>
       </p>
     </div>
   </div>
@@ -508,6 +531,7 @@ clawperf --mode scenario \
       <h4><span class="en">Project</span><span class="zh">项目</span></h4>
       <ul>
         <li><a href="https://github.com/ucm-system/ClawPerf">GitHub</a></li>
+        <li><a href="reference.html"><span class="en">Reference: modes &amp; all parameters</span><span class="zh">完整参考：模式与全部参数</span></a></li>
         <li><a href="https://github.com/ucm-system/ClawPerf/blob/main/README.md">README (EN)</a></li>
         <li><a href="https://github.com/ucm-system/ClawPerf/blob/main/README_CN.md">README（中文）</a></li>
         <li><a href="https://github.com/ucm-system/ClawPerf/blob/main/LICENSE">Apache-2.0</a></li>

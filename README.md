@@ -9,7 +9,7 @@
 
 Performance benchmarking tool for LLM serving backends (vLLM / SGLang / MindIE / vllm-ascend) under **real agent workloads** — multi-turn, long-context, prefix-cache-heavy traffic.
 
-📖 **[Project site](https://ucm-system.github.io/ClawPerf/)** (bilingual, with the workload and pipeline diagrams) · [中文文档](README_CN.md)
+📖 **[Project site](https://ucm-system.github.io/ClawPerf/)** (bilingual, with the workload and pipeline diagrams) · **[Full reference](https://ucm-system.github.io/ClawPerf/reference.html)** — every mode, every context profile, all 73 parameters with examples · [中文文档](README_CN.md)
 
 Built on [EvalScope](https://github.com/modelscope/evalscope)'s perf infrastructure, ClawPerf measures how an inference stack behaves when actual coding agents hammer it: growing contexts, shared prefixes between turns, tool calls, and concurrent sessions.
 
@@ -286,17 +286,44 @@ backend: vllm
 
 ### Context profiles & suites
 
-| Profile | sys+usr+in (tokens) | | Suite | users × profiles |
-|---------|---------------------|-|-------|------------------|
-| `fresh` | 7K | | `quick` | [1,4,8] × fresh |
-| `short` | 22K | | `standard` | [1,8,16,32] × medium+long |
-| `medium` | 43K | | `full` | [1,4,8,16,32,64] × fresh→full |
-| `long` | 75K | | `hitrate` | [1] × fresh→full |
-| `full` | 105K | | | |
-| `xl` | 205K | | | |
-| `xxl` | 392K | | | |
+A **profile** is a named context size, so you don't have to invent token counts. `--context-profile <name>` sets all three numbers at once:
 
-`--model-context-length` skips profiles whose base context exceeds the model window.
+| Profile | system prefix | user prefix | input / turn | base context | use it for |
+|---------|--------------:|------------:|-------------:|-------------:|------------|
+| `fresh`  | 4,000 | 1,500 | 1,500 | **7K** | smoke test, quick sanity check |
+| `short`  | 14,000 | 5,000 | 3,000 | **22K** | short chat with a few tool calls |
+| `medium` | 28,000 | 10,000 | 5,000 | **43K** | typical coding session |
+| `long`   | 50,000 | 18,000 | 7,000 | **75K** | long session, many files + history |
+| `full`   | 72,000 | 25,000 | 8,000 | **105K** | approaching a 100K window |
+| `xl`     | 150,000 | 45,000 | 10,000 | **205K** | prefill stress (a request can dominate a step) |
+| `xxl`    | 300,000 | 80,000 | 12,000 | **392K** | near the largest model windows |
+
+Names are case-insensitive. `--context-profile medium` overrides the raw `--system-prefix-tokens / --user-prefix-tokens / --input-tokens-per-turn` flags.
+
+A **suite** runs the (users × profiles) cross-product in sequence, writing one result file per scenario:
+
+| Suite | user counts | profiles | turns | out/turn | scenarios |
+|-------|-------------|----------|------:|---------:|----------:|
+| `quick` | 1, 4, 8 | `fresh` | 10 | 256 | 3 |
+| `standard` | 1, 8, 16, 32 | `medium` + `long` | 20 | 512 | 8 |
+| `full` | 1, 4, 8, 16, 32, 64 | `fresh` → `full` | 30 | 512 | 30 |
+| `hitrate` | 1 | `fresh` → `full` | 5 | 128 | 5 |
+
+```bash
+# one profile
+clawperf --mode scenario --context-profile medium --num-users 8 ...
+
+# sweep profiles × users (writes results_<profile>_<users>u.json per scenario)
+clawperf --mode scenario --suite full --model-context-length 32768 ...
+
+# raw token counts instead of a named profile
+clawperf --mode scenario --system-prefix-tokens 28000 \
+  --user-prefix-tokens 10000 --input-tokens-per-turn 5000 ...
+```
+
+`--model-context-length` skips profiles whose base context cannot fit the model window (and clamps trace-replay `max_tokens` to what remains).
+
+📖 **[Full reference — every mode, every profile and all 73 parameters, with examples](https://ucm-system.github.io/ClawPerf/reference.html)** (generated from `clawperf --help`, so it can't drift).
 
 ### Key options by mode
 

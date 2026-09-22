@@ -1,0 +1,90 @@
+{
+  "_comment": "Chinese descriptions for the parameter reference page, keyed by argparse dest. Generated pages fall back to the English --help text when a key is missing. Keep this in sync with src/clawperf/cli.py.",
+
+  "mode": "基准模式（见上文各模式介绍）：scenario（默认，多轮长上下文负载）、hitrate（受控前缀缓存命中率）、slo（扫描并发找 SLO 临界点）、agent（真实工具调用 Agent）、record（录制代理）、replay（回放录制）、trace（基于 trace 的 KV 缓存模拟）。",
+  "context_profile": "命名的上下文档位（大小写不敏感），会覆盖下面的原始 token 数：fresh、short、medium、long、full、xl、xxl（基础上下文约 6K→400K，具体拆分见档位表）。",
+  "suite": "预置套件：quick、standard、full、hitrate。按序运行多个（并发用户 × 档位）场景。",
+  "model_context_length": "模型的最大上下文窗口。超出该窗口的套件档位会被跳过；trace 回放时会据此裁剪 max_tokens，保证请求能放进窗口（0 = 不限制）。",
+
+  "num_requests": "测量阶段的请求总数。",
+  "input_len": "每个请求的提示词总长度 = 共享前缀 + 边界 token + 各自独有的后缀。",
+  "output_len": "每个请求生成的 token 数（预热/预填充阶段只用 1）。",
+  "prefix_len": "共享前缀的 token 长度（0 = 由 --hit-rate 反推）。",
+  "hit_rate": "目标共享比例 0..1，用于反推 --prefix-len；与 --prefix-len 互斥。",
+  "prefix_num": "不同前缀的个数；每个前缀分到的请求数 = N // prefix-num。",
+  "prefill": "测量前先把每个不同前缀注入 KV 缓存。 / 跳过预填充阶段（测冷缓存表现）。",
+  "seed": "提示词构造的随机种子，用于复现。",
+
+  "slo_constraints": "灵活的 SLO 约束，可重复指定：<指标>.<统计量><分隔符><毫秒>，例如 ttft.p99<=1500、tpot.avg<=30、e2e.max<=30000。指标：ttft|tpot|e2e；统计量：avg|min|max|p25|p50|p75|p90|p95|p99…；运算符：<=|<|>=|>。多条约束之间为「与」关系。shell 安全：'<' 与 '>' 是重定向符号，所以要么加引号（--slo 'ttft.p99<=1500'），要么用免引号分隔符写法 --slo ttft.p99:1500（':' 或 '=' 表示 '<='，--slo ttft.p99:ge:1500 表示 '>='）。一个引号参数内可用逗号写多条：--slo 'ttft.p99<=1500,tpot.avg<=30'。给出后即替代旧式 --slo-ttft-ms/--slo-tpot-ms。",
+  "slo_ttft_ms": "旧式写法：在 --slo-percentile 分位上的 TTFT 阈值（推荐改用 --slo ttft.p99<=X）。",
+  "slo_tpot_ms": "旧式写法：在 --slo-percentile 分位上的 TPOT 阈值（推荐改用 --slo tpot.p99<=X）。",
+  "slo_percentile": "旧式 --slo-ttft-ms/--slo-tpot-ms 所使用的分位（给出 --slo 约束时忽略）。",
+  "slo_error_rate": "额外的达标条件：该步的错误率必须不高于此比例（0..1），例如 0.01 表示 1%。",
+  "slo_min_users": "扫描的起始并发用户数。",
+  "slo_max_users": "扫描可达到的最大并发用户数。",
+  "slo_step_strategy": "扫描下一档的方式：geometric 成倍增长（1→2→4→8，适合大范围快速定位），linear 逐级递增。",
+  "slo_step_turns": "每一档每个用户参与测量的轮数。",
+  "slo_step_warmup_turns": "每档测量前，每个用户不计入统计的预热轮数。",
+  "slo_step_timeout_s": "单档的墙钟预算；超时的档会被记为 TIMEOUT 并判定 SLO 不达标。",
+  "slo_step_reset_cache": "每档开始前清空服务端前缀缓存，让每一档都从冷缓存起步（默认开启）。 / 跨档保留缓存（测稳态复用）。",
+
+  "agent_tasks": "并发运行的编码任务数。",
+  "agent_task_file": "自定义任务的 JSON/YAML 文件（默认使用内置任务集）。",
+  "agent_max_steps": "单个任务在被截断前的最大工具调用步数。",
+  "agent_max_tokens": "任务内每次模型调用的最大生成 token 数。",
+  "agent_shell_timeout": "Agent 执行的单条 shell 命令允许的最长秒数。",
+  "agent_workdir": "每个任务工作区的根目录（默认使用临时目录）。",
+
+  "upstream_endpoint": "需要转发到的真实 LLM 端点（环境变量：CLAWPERF_UPSTREAM_ENDPOINT）。",
+  "proxy_port": "录制代理监听的端口。",
+  "recording": "录制内容写入的 JSONL 文件。",
+  "upstream_api": "上游端点的 API 类型（auto 表示自动识别）。",
+
+  "history_mode": "live（推荐）：把服务端真实返回作为下一轮历史，保证 KV 缓存前缀对齐；verbatim：原样发送每条录制记录的 messages。",
+
+  "trace_file": "kvcache.ai 格式的 JSONL trace 文件，每行 {hash_ids, input_length, block_size?}；支持 .gz 压缩，用 '-' 表示从标准输入读取。",
+  "cache_budget_tokens": "KV 缓存容量上限（token 数，0 = 不限）。要做预算扫描请改用 --budget-sweep。",
+  "cache_budget_gb": "另一种写法：用 GB 指定缓存预算，会覆盖 --cache-budget-tokens，并按 --kv-bytes-per-token 换算。",
+  "eviction_policy": "缓存超出预算时的块驱逐策略。",
+  "trace_block_size": "默认块大小（token 数）；trace 行内自带 block_size 时以行内为准。",
+  "trace_users": "真实回放的会话级并发：当 trace 带 user_id/session_id 时，同时跑多少个用户/会话组；同一会话内的轮次保持有序。若 trace 没有用户标识，请改用 --concurrency 做请求级并发。",
+  "budget_sweep": "在多个预算档位下重复模拟，找出收益拐点（边际递减），输出「命中率-预算」曲线。",
+  "kv_bytes_per_token": "每个 KV 缓存 token 占用的字节数，用于 GB↔token 换算。不同模型差异很大（如 DeepSeek MLA 约 0.5，Qwen2.5 72B 约 4.0）。",
+
+  "num_users": "并发用户总数。",
+  "user_arrival": "'burst'（一次性全部加入）、'steady:<秒>'（每 N 秒加入一个）、'poisson:<λ>'（泊松到达，λ 为到达率）。",
+
+  "system_prefix_tokens": "所有用户共享的系统提示词长度（上下文的主要部分），会被 --context-profile/--suite 覆盖。",
+  "system_prefix_source": "'random' 表示合成填充内容；也可传文件路径，用文件内容作为系统前缀。",
+  "user_prefix_tokens": "每个用户各自独有的前缀长度（各不相同，避免前缀缓存被轻易命中）。",
+  "input_tokens_per_turn": "每轮追加的新用户内容长度。",
+  "output_tokens_per_turn": "每轮最大生成 token 数（配合 --ignore-eos 时即为实际测得的解码长度）。",
+  "max_context_tokens": "触发追加式压缩的窗口阈值（必须与模型真实上下文窗口一致）。",
+  "compaction_prefix_increment": "每次压缩后向压缩前缀追加的 token 数。",
+
+  "request_rate": "开环请求发送速率（req/s，泊松到达，语义同 benchmark_serving）。0（默认）为闭环：由 --concurrency（hitrate/replay/trace）或连续轮次（scenario/slo/agent）驱动节奏。大于 0 时，hitrate/replay/trace 会忽略 --concurrency —— 请求按计划发送，与是否完成无关。注意：--user-arrival 控制的是用户（会话）何时加入，--request-rate 控制的是单个请求的发送节奏。",
+  "concurrency": "请求级并发：hitrate 测量阶段、replay、以及无用户标识的 trace 真实回放的在途请求数。trace 会话请用 --trace-users。",
+  "max_turns": "scenario 模式下每个用户的轮数（往返次数）；--suite 会覆盖该值。",
+  "max_consecutive_failures": "连续失败达到该次数后中止基准（0 = 不启用）。",
+
+  "endpoint": "LLM API 端点地址（环境变量：CLAWPERF_ENDPOINT）。",
+  "model": "模型名称（环境变量：CLAWPERF_MODEL）。",
+  "api_key": "API Key（环境变量：CLAWPERF_API_KEY）。",
+  "tokenizer": "tokenizer 路径或模型 id（默认为 --model）。本地目录会严格离线加载（不查 hub）；可用 CLAWPERF_TOKENIZER_BACKEND=transformers|modelscope 强制指定后端。",
+  "ignore_eos": "要求服务端忽略 EOS，让每个请求都解码满输出长度（默认开启 —— 这是比较吞吐的公平做法）。 / 允许模型在 EOS 处自然停止（更贴近真实对话时延）。",
+  "request_timeout": "单个请求的超时时间（秒）。",
+  "preflight": "跳过预检探针（正式跑之前发出的那个极小请求，用于尽早发现 endpoint/模型写错）。当服务端会重置该探针但实际能正常服务时使用。",
+  "preflight_retries": "预检探针的最大尝试次数（默认 3 次；传输类错误会带退避重试）。",
+
+  "metrics_endpoint": "Prometheus 指标端点。可重复指定（或用逗号分隔），用于多实例 / PD 分离服务 —— 每个 prefill/decode 实例各暴露一个 /metrics，计数器求和成全局视图，并给出逐实例的引擎明细。可用 '名称=url' 指定标签（默认标签为 host:port）。",
+  "metrics_interval": "周期性抓取 /metrics 的间隔秒数（仅在 --metrics-samples 时生效）。",
+  "metrics_samples": "在运行过程中周期性抓取 /metrics，而不只是开始/结束各一次（会带来少量额外请求）。",
+  "reset_cache": "运行前清空服务端前缀缓存，使测得的命中率只反映本次基准的流量。",
+  "backend": "服务端后端类型，决定读取哪些 Prometheus 指标名。",
+
+  "output": "输出 JSON 文件路径（默认带时间戳的 results_<ts>.json）。环境变量：CLAWPERF_OUTPUT。",
+  "history": "每次运行向该 JSONL 文件追加一行记录。环境变量：CLAWPERF_HISTORY。传 '' 可关闭。",
+  "verbose": "逐请求打印日志而不是显示进度条（适合 CI 日志）。",
+
+  "config": "YAML 配置文件。优先级低于命令行参数与环境变量。"
+}

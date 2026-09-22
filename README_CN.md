@@ -9,7 +9,7 @@
 
 面向 LLM 推理服务（vLLM / SGLang / MindIE / vllm-ascend）的性能基准测试工具，聚焦**真实 Agent 工作负载**：多轮对话、长上下文、前缀缓存密集流量。
 
-📖 **[项目主页](https://ucm-system.github.io/ClawPerf/)**（中英双语，含工作负载与流水线示意图） · [English](README.md)
+📖 **[项目主页](https://ucm-system.github.io/ClawPerf/)**（中英双语，含工作负载与流水线示意图） · **[完整参考](https://ucm-system.github.io/ClawPerf/reference.html)** —— 每种模式、每个上下文档位、全部 73 个参数与示例 · [English](README.md)
 
 基于 [EvalScope](https://github.com/modelscope/evalscope) 的 perf 基础设施，ClawPerf 衡量推理栈在真实编码 Agent 冲击下的表现：上下文增长、轮次间共享前缀、工具调用、并发会话。
 
@@ -273,17 +273,44 @@ backend: vllm
 
 ### 上下文档位与套件
 
-| Profile | sys+usr+in（tokens） |  | Suite | users × profiles |
-|---------|----------------------|--|-------|------------------|
-| `fresh` | 7K |  | `quick` | [1,4,8] × fresh |
-| `short` | 22K |  | `standard` | [1,8,16,32] × medium+long |
-| `medium` | 43K |  | `full` | [1,4,8,16,32,64] × fresh→full |
-| `long` | 75K |  | `hitrate` | [1] × fresh→full |
-| `full` | 105K |  |  |  |
-| `xl` | 205K |  |  |  |
-| `xxl` | 392K |  |  |  |
+**档位（profile）** 就是「命名的上下文大小」，免去自己拼 token 数。`--context-profile <名称>` 一次性设定三个数字：
 
-`--model-context-length` 会跳过基础上下文超出模型窗口的档位。
+| 档位 | 系统前缀 | 用户前缀 | 每轮输入 | 基础上下文 | 适用场景 |
+|------|--------:|--------:|--------:|----------:|----------|
+| `fresh`  | 4,000 | 1,500 | 1,500 | **7K** | 冒烟测试、快速自检 |
+| `short`  | 14,000 | 5,000 | 3,000 | **22K** | 短对话 + 少量工具调用 |
+| `medium` | 28,000 | 10,000 | 5,000 | **43K** | 典型编码会话 |
+| `long`   | 50,000 | 18,000 | 7,000 | **75K** | 长会话、多文件 + 长历史 |
+| `full`   | 72,000 | 25,000 | 8,000 | **105K** | 接近 100K 窗口 |
+| `xl`     | 150,000 | 45,000 | 10,000 | **205K** | 预填充压力测试（单请求可能主导一步） |
+| `xxl`    | 300,000 | 80,000 | 12,000 | **392K** | 接近最大模型窗口 |
+
+档位名大小写不敏感。`--context-profile medium` 会覆盖原生的 `--system-prefix-tokens / --user-prefix-tokens / --input-tokens-per-turn`。
+
+**套件（suite）** 会按序跑完（并发用户 × 档位）的笛卡尔积，每个场景各写一份结果文件：
+
+| 套件 | 并发用户 | 档位 | 轮数 | 每轮输出 | 场景数 |
+|------|----------|------|-----:|---------:|-------:|
+| `quick` | 1, 4, 8 | `fresh` | 10 | 256 | 3 |
+| `standard` | 1, 8, 16, 32 | `medium` + `long` | 20 | 512 | 8 |
+| `full` | 1, 4, 8, 16, 32, 64 | `fresh` → `full` | 30 | 512 | 30 |
+| `hitrate` | 1 | `fresh` → `full` | 5 | 128 | 5 |
+
+```bash
+# 单个档位
+clawperf --mode scenario --context-profile medium --num-users 8 ...
+
+# 扫描「档位 × 并发」（每个场景写 results_<档位>_<用户数>u.json）
+clawperf --mode scenario --suite full --model-context-length 32768 ...
+
+# 不用档位，直接写原始 token 数
+clawperf --mode scenario --system-prefix-tokens 28000 \
+  --user-prefix-tokens 10000 --input-tokens-per-turn 5000 ...
+```
+
+`--model-context-length` 会跳过基础上下文放不进模型窗口的档位（并把 trace 回放的 `max_tokens` 裁剪到剩余窗口）。
+
+📖 **[完整参考 —— 每种模式、每个档位、全部 73 个参数与示例](https://ucm-system.github.io/ClawPerf/reference.html)**（由 `clawperf --help` 自动生成，不会与代码脱节）。
 
 ### 各模式关键参数
 

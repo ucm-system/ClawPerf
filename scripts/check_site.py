@@ -36,19 +36,29 @@ class SiteParser(HTMLParser):
         self.stack: list[tuple[str, int]] = []
         self.problems: list[str] = []
         self.refs: list[tuple[str, int]] = []
+        self.ids: set[str] = set()
+        self.fragments: list[tuple[str, int]] = []
 
     def handle_starttag(self, tag, attrs):
         line = self.getpos()[0]
         for name, value in attrs:
+            if name == "id" and value:
+                self.ids.add(value)
             if name in URL_ATTRS and value:
                 self.refs.append((value, line))
+                if value.startswith("#") and len(value) > 1:
+                    self.fragments.append((value[1:], line))
         if tag not in VOID:
             self.stack.append((tag, line))
 
     def handle_startendtag(self, tag, attrs):
         for name, value in attrs:
+            if name == "id" and value:
+                self.ids.add(value)
             if name in URL_ATTRS and value:
                 self.refs.append((value, self.getpos()[0]))
+                if value.startswith("#") and len(value) > 1:
+                    self.fragments.append((value[1:], self.getpos()[0]))
 
     def handle_endtag(self, tag):
         if tag in VOID:
@@ -84,6 +94,12 @@ def check_html(path: Path, root: Path) -> list[str]:
             problems.append(f"{path.name}: line {line}: missing asset {value!r}")
         elif root not in target.parents and target != root:
             problems.append(f"{path.name}: line {line}: asset {value!r} escapes the site root")
+
+    # In-page anchors (the table of contents) must point at a real id, or the
+    # link silently does nothing.
+    for fragment, line in parser.fragments:
+        if fragment not in parser.ids:
+            problems.append(f"{path.name}: line {line}: dead in-page anchor #{fragment}")
     return problems
 
 
@@ -107,14 +123,20 @@ def main(argv: list[str]) -> int:
         print(f"FAIL: {index} not found")
         return 1
 
-    problems = check_html(index, root) + check_svgs(root / "assets")
+    pages = sorted(root.glob("*.html"))
+    problems: list[str] = []
+    for page in pages:
+        problems.extend(check_html(page, root))
+    problems.extend(check_svgs(root / "assets"))
     if problems:
         print("site check FAILED:")
         for p in problems:
             print(f"  - {p}")
         return 1
 
-    print(f"site check OK: {index.name} + {len(list((root / 'assets').glob('*.svg')))} SVG figures")
+    svgs = len(list((root / "assets").glob("*.svg")))
+    print(f"site check OK: {len(pages)} page(s) "
+          f"({', '.join(p.name for p in pages)}) + {svgs} SVG figures")
     return 0
 
 

@@ -10,7 +10,9 @@ on:
     branches: [main]
     paths:
       - "docs/**"
+      - "src/clawperf/**"
       - "scripts/check_site.py"
+      - "scripts/gen_reference.py"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -35,10 +37,18 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install the package (the reference page is generated from the CLI)
+        run: python3 -m pip install -e .
+
       - name: Validate the site
         # Broken relative asset paths, unbalanced tags and malformed SVG all
         # fail here instead of shipping a half-rendered page.
         run: python3 scripts/check_site.py docs
+
+      - name: The reference page matches the CLI
+        # docs/reference.html lists every flag with its help text and default;
+        # if it drifts from clawperf --help the site would quietly lie.
+        run: python3 scripts/gen_reference.py --check
 
       - name: Validate the diagram geometry
         # Overlapping boxes, clipped labels and detached arrows are caught by
