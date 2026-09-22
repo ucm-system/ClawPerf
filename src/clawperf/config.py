@@ -16,24 +16,61 @@ from typing import Optional
 
 # ── Flexible SLO constraints ──────────────────────────────────────────────────
 #
-# Syntax:  <metric>.<agg><op><value_ms>
+# Syntax:  <metric>.<agg><sep><value_ms>
 #   metric: ttft | tpot | e2e        (case-insensitive)
 #   agg:    avg | min | max | p25 | p50 | p75 | p90 | p95 | p99 | p99.9 | ...
-#   op:     <= | < | >= | >
+#   sep:    <= | < | >= | >          (symbolic, quote it in a shell)
+#           : | =                    (shell-safe shorthand for <=)
+#           le | lt | ge | gt        (word form, shell-safe for every op)
 #
 # Examples:
 #   ttft.p99<=1500      P99 time-to-first-token at most 1500 ms
 #   tpot.avg<=30        average time-per-output-token at most 30 ms
 #   e2e.max<=30000      worst-case end-to-end latency at most 30 s
 #
-# Multiple constraints AND together. When --slo constraints are given they
-# replace the legacy --slo-ttft-ms/--slo-tpot-ms thresholds (which remain
-# supported and are converted to '<metric>.p{percentile}<={ms}' constraints).
+# Shell safety: '<' and '>' are redirection operators to bash/zsh, so
+# `--slo ttft.p99<=1500` unquoted makes the shell eat the operator and try to
+# read a file named `=1500` ("No such file or directory"). Either quote the
+# spec (`--slo 'ttft.p99<=1500'`) or use a separator without those characters:
+#
+#   --slo ttft.p99:1500            == ttft.p99<=1500
+#   --slo tpot.avg=30              == tpot.avg<=30
+#   --slo ttft.p99:le:1500         == ttft.p99<=1500
+#   --slo ttft.p99:ge:1500         == ttft.p99>=1500
+#   --slo 'ttft.p99<=1500,tpot.avg<=30,e2e.max<=30000'   (one quoted string)
+#
+# Multiple constraints AND together (repeat --slo, or comma/semicolon-separate
+# them inside one value). When --slo constraints are given they replace the
+# legacy --slo-ttft-ms/--slo-tpot-ms thresholds (which remain supported and are
+# converted to '<metric>.p{percentile}<={ms}' constraints).
 
-_SLO_SPEC_RE = re.compile(
-    r"^\s*(ttft|tpot|e2e)\.(avg|min|max|p[0-9]+(?:\.[0-9]+)?)\s*(<=|>=|<|>)\s*"
-    r"([0-9]*\.?[0-9]+)\s*(?:ms)?\s*$",
-    re.IGNORECASE,
+_SLO_HEAD_RE = re.compile(
+    r"^\s*(ttft|tpot|e2e)\s*\.\s*(avg|min|max|mean|p[0-9]+(?:\.[0-9]+)?)\s*(.*)$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+_SLO_VALUE_RE = re.compile(r"^\s*([0-9]*\.?[0-9]+)\s*(?:ms)?\s*$", re.IGNORECASE)
+
+# Symbolic separators, longest first so '<=' is not read as '<' + '='.
+_SLO_SYMBOLS = (
+    ("<=", "<="), ("=<", "<="), ("≤", "<="),
+    (">=", ">="), ("=>", ">="), ("≥", ">="),
+    ("==", "<="),
+    ("<", "<"),
+    (">", ">"),
+    (":", "<="),
+    ("=", "<="),
+)
+
+_SLO_WORDS = {"le": "<=", "lte": "<=", "lt": "<", "ge": ">=", "gte": ">=", "gt": ">", "eq": "<="}
+
+_SLO_HINT = (
+    "expected '<metric>.<agg><op><value_ms>', e.g. ttft.p99<=1500, tpot.avg<=30, "
+    "e2e.max<=30000 (metrics: ttft|tpot|e2e; aggs: avg|min|max|p25|p50|p75|p90|p95|"
+    "p99|p99.9; ops: <=|<|>=|>). In a shell, '<' and '>' are redirection "
+    "operators — quote the spec (--slo 'ttft.p99<=1500') or use the shell-safe "
+    "separator form --slo ttft.p99:1500 (':' or '=' means '<=', and "
+    "'ttft.p99:le:1500' / 'ttft.p99:ge:1500' spell out the operator)."
 )
 
 
@@ -103,25 +140,97 @@ class SloConstraint:
         return False
 
 
+def _parse_slo_tail(rest: str) -> tuple:
+    """Parse the ``<op><value>`` tail of an SLO spec into ``(op, value_ms)``.
+
+    Accepts the symbolic operators, the shell-safe ``:`` / ``=`` separator
+    (both meaning ``<=``), and the word operators ``le|lt|ge|gt`` — in any of
+    the equivalent spellings (``:1500``, ``<=1500``, ``:le:1500``, ``le 1500``).
+    """
+    text = rest.strip()
+    # Shell-safe separator form: a leading ':' or '=' is punctuation, not the op.
+    while text[:1] in (":", "="):
+        text = text[1:].strip()
+
+    op = ""
+    for sym, norm in _SLO_SYMBOLS:
+        if sym in ("<=", ">=", "<", ">", "≤", "≥") and text.startswith(sym):
+            op, text = norm, text[len(sym):].strip()
+            break
+    if not op:
+        wm = re.match(r"^([A-Za-z]+)\s*[:=]?\s*(.*)$", text, re.DOTALL)
+        if wm and wm.group(1).lower() in _SLO_WORDS:
+            op, text = _SLO_WORDS[wm.group(1).lower()], wm.group(2).strip()
+    if not op:
+        op = "<="  # bare 'metric.agg:1500' / 'metric.agg=1500' means '<='
+    while text[:1] in (":", "="):  # tolerate 'ttft.p99<=:1500'
+        text = text[1:].strip()
+
+    vm = _SLO_VALUE_RE.match(text)
+    if not vm:
+        raise ValueError(
+            f"invalid SLO threshold {rest.strip()!r}: expected a millisecond "
+            f"number such as 1500 or 1500ms. {_SLO_HINT}"
+        )
+    return op, float(vm.group(1))
+
+
 def parse_slo_constraint(spec: str) -> SloConstraint:
     """Parse a constraint spec like ``ttft.p99<=1500`` into a SloConstraint.
 
     Raises ValueError with a usage hint on malformed input.
     """
-    m = _SLO_SPEC_RE.match(spec or "")
+    raw = (spec or "").strip()
+    # Tolerate a spec that still carries its surrounding quotes (pasted from a
+    # shell one-liner or a YAML/env value).
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in ("'", '"'):
+        raw = raw[1:-1].strip()
+    m = _SLO_HEAD_RE.match(raw)
     if not m:
+        raise ValueError(f"invalid SLO constraint {spec!r}. {_SLO_HINT}")
+
+    metric, agg = m.group(1).lower(), m.group(2).lower()
+    if agg == "mean":
+        agg = "avg"
+
+    rest = m.group(3)
+    if not rest.strip():
+        # Classic shell trap: `--slo ttft.p99<=1500` unquoted — bash treats '<'
+        # as a redirection and hands ClawPerf only the bare 'ttft.p99'.
         raise ValueError(
-            f"invalid SLO constraint {spec!r}: expected '<metric>.<agg><op><value_ms>', "
-            "e.g. ttft.p99<=1500, tpot.avg<=30, e2e.max<=30000 "
-            "(metrics: ttft|tpot|e2e; aggs: avg|min|max|p25|p50|p75|p90|p95|p99...; "
-            "ops: <=|<|>=|>)"
+            f"invalid SLO constraint {spec!r}: no operator or threshold found "
+            "after the metric. If you wrote --slo ttft.p99<=1500 without quotes, "
+            "your shell consumed '<' as a redirection and ClawPerf only received "
+            f"{spec!r} — quote it (--slo 'ttft.p99<=1500') or use the shell-safe "
+            "form --slo ttft.p99:1500. " + _SLO_HINT
         )
-    return SloConstraint(
-        metric=m.group(1).lower(),
-        agg=m.group(2).lower(),
-        op=m.group(3),
-        value_ms=float(m.group(4)),
-    )
+
+    op, value_ms = _parse_slo_tail(rest)
+    return SloConstraint(metric=metric, agg=agg, op=op, value_ms=value_ms)
+
+
+def split_slo_specs(specs) -> list:
+    """Flatten ``--slo`` values into individual specs.
+
+    Each value may itself carry several constraints separated by ',' or ';',
+    so ``--slo 'ttft.p99<=1500,tpot.avg<=30'`` works as one quoted argument.
+    """
+    if not specs:
+        return []
+    if isinstance(specs, str):
+        specs = [specs]
+    out = []
+    for item in specs:
+        for part in re.split(r"[,;]", str(item)):
+            part = part.strip()
+            if part:
+                out.append(part)
+    return out
+
+
+def parse_slo_specs(specs) -> list:
+    """Parse (and flatten) a collection of ``--slo`` specs."""
+    return [parse_slo_constraint(s) for s in split_slo_specs(specs)]
 
 
 @dataclasses.dataclass
@@ -235,6 +344,12 @@ class BenchmarkConfig:
     tokenizer: str = ""
     ignore_eos: bool = True
     request_timeout: int = 600
+    # Pre-flight probe: send one tiny request before the run so a wrong
+    # endpoint/model fails in seconds instead of after content generation.
+    # Transient failures (connection reset while the server is still loading,
+    # timeouts) are retried; --no-preflight skips the probe entirely.
+    preflight: bool = True
+    preflight_retries: int = 3
 
     # ── System metrics configuration ──
     # One or more Prometheus endpoints (multi-instance / PD-disaggregated
@@ -290,10 +405,9 @@ class BenchmarkConfig:
         raw = self.slo_constraints
         if raw is None or raw == "":
             self.slo_constraints = ()
-        elif isinstance(raw, str):
-            self.slo_constraints = tuple(s.strip() for s in raw.split(",") if s.strip())
-        elif isinstance(raw, (list, tuple)):
-            self.slo_constraints = tuple(raw)
+        else:
+            # Flat tuple of individual specs (a value may carry several).
+            self.slo_constraints = tuple(split_slo_specs(raw))
         for spec in self.slo_constraints:
             parse_slo_constraint(spec)
 
@@ -302,7 +416,7 @@ class BenchmarkConfig:
         legacy --slo-ttft-ms/--slo-tpot-ms pair (at --slo-percentile) is
         converted into equivalent constraints."""
         if self.slo_constraints:
-            return [parse_slo_constraint(s) for s in self.slo_constraints]
+            return parse_slo_specs(self.slo_constraints)
         cons = []
         pct = f"p{self.slo_percentile * 100:g}"
         if self.slo_ttft_ms is not None:

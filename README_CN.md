@@ -123,15 +123,39 @@ clawperf --mode hitrate \
 
 ### slo — SLO 约束下最大并发
 
-约束可自由组合：任意时延指标（`ttft` / `tpot` / `e2e`）× 任意统计量（`avg`、`min`、`max`、`p25`、`p50`、`p75`、`p90`、`p95`、`p99`、`p99.9` …）× 任意比较符（`<=`、`<`、`>=`、`>`），单位毫秒。`--slo` 可重复指定，多个约束之间为**与**关系：
+约束可自由组合：任意时延指标（`ttft` / `tpot` / `e2e`）× 任意统计量（`avg`、`min`、`max`、`p25`、`p50`、`p75`、`p90`、`p95`、`p99`、`p99.9` …）× 任意比较符（`<=`、`<`、`>=`、`>`），单位毫秒。`--slo` 可重复指定，多个约束之间为**与**关系。
+
+> **Shell 陷阱（务必先看）。** `<` 和 `>` 在 bash/zsh 里是重定向符号，所以**不加引号**的 `--slo ttft.p99<=500` 会被 shell 吃掉运算符，并试图读取名为 `=500` 的文件，报错 `bash: =500: No such file or directory` —— ClawPerf 根本没被启动。要么给整个参数加引号，要么使用**完全不需要引号**的分隔符写法：
 
 ```bash
+# 免引号写法：':' 或 '=' 都表示 '<='
 clawperf --mode slo \
   --endpoint http://localhost:8000/v1 --model qwen2.5-72b \
-  --slo ttft.p99<=500 --slo tpot.avg<=30 --slo e2e.max<=30000 \
+  --slo ttft.p99:500 --slo tpot.avg:30 --slo e2e.max:30000 \
   --slo-min-users 1 --slo-max-users 200 \
   --slo-step-strategy geometric \
   --output results_slo.json
+
+# 等价写法 —— 加引号的符号形式（或一整串逗号分隔的约束）
+clawperf --mode slo ... \
+  --slo 'ttft.p99<=500' --slo 'tpot.avg<=30' --slo 'e2e.max<=30000'
+clawperf --mode slo ... --slo 'ttft.p99<=500,tpot.avg<=30,e2e.max<=30000'
+```
+
+| 写法 | 含义 | 说明 |
+|------|------|------|
+| `ttft.p99:500` / `ttft.p99=500` | `ttft.p99 <= 500` | 免引号 |
+| `ttft.p99<=500` | `ttft.p99 <= 500` | 在 shell 中需加引号 |
+| `ttft.p99:le:500` / `ttft.p99 le 500` | `ttft.p99 <= 500` | 单词运算符：`le lt ge gt` |
+| `ttft.p99:ge:500` | `ttft.p99 >= 500` | 唯一免引号的 `>=` 写法 |
+| `ttft.p99<=500ms` | 同上，单位可省略 | |
+
+万一还是被 shell 吃掉，ClawPerf 会识别出只剩指标名的参数并直接说明原因，而不是抛出无关的报错：
+
+```
+[ClawPerf] configuration error: invalid SLO constraint 'ttft.p99': no operator or threshold
+found after the metric. If you wrote --slo ttft.p99<=1500 without quotes, your shell consumed
+'<' as a redirection ... quote it (--slo 'ttft.p99<=1500') or use --slo ttft.p99:1500.
 ```
 
 旧写法依然支持（内部自动转换为 `ttft.p99<=X` 形式）：
@@ -265,10 +289,11 @@ backend: vllm
 
 | 模式 | 核心参数 |
 |------|----------|
-| 全部 | `--endpoint --model --api-key --request-timeout --output --verbose --config` |
+| 全部 | `--endpoint --model --api-key --tokenizer --request-timeout --output --verbose --config` |
+| 可靠性 | `--no-preflight`（跳过预检探针）、`--preflight-retries N`（默认 3） |
 | scenario | `--num-users --user-arrival --context-profile` 或原生 `--system-prefix-tokens/--user-prefix-tokens/--input-tokens-per-turn`，`--max-turns --max-context-tokens --compaction-prefix-increment --suite --max-consecutive-failures` |
 | hitrate | `--num-requests --input-len --output-len --hit-rate` 或 `--prefix-len`，`--prefix-num --prefill/--no-prefill --seed` |
-| slo | `--slo <指标>.<统计量><运算符><毫秒>`（可重复；ttft/tpot/e2e × avg/min/max/p25…p99.9），或旧式 `--slo-ttft-ms/--slo-tpot-ms --slo-percentile`；`--slo-error-rate --slo-min-users --slo-max-users --slo-step-*` |
+| slo | `--slo <指标>.<统计量><分隔符><毫秒>`（可重复；ttft/tpot/e2e × avg/min/max/p25…p99.9；分隔符 = `:`/`=`/`<=`/`<`/`>=`/`>`/`le`/`lt`/`ge`/`gt`），或旧式 `--slo-ttft-ms/--slo-tpot-ms --slo-percentile`；`--slo-error-rate --slo-min-users --slo-max-users --slo-step-*` |
 | agent | `--agent-tasks --agent-task-file --agent-max-steps --agent-max-tokens --agent-shell-timeout --agent-workdir` |
 | record | `--upstream-endpoint --proxy-port --recording --upstream-api` |
 | replay | `--recording --history-mode live\|verbatim` |
@@ -317,6 +342,50 @@ clawperf --mode scenario \
 ```
 
 `--metrics-endpoint` 可重复指定，也接受逗号分隔列表和 `标签=url`（默认标签为 host:port）。`--reset-cache`（含 SLO 每步重置）会对每个实例的 reset 端口逐一重置。PD 部署中前缀缓存命中通常发生在 prefill 实例——这张表能直接看出复用发生在哪里。
+
+## 常见问题排查
+
+### `--slo` 与其他参数
+
+| 现象 | 原因 | 解决 |
+|------|------|------|
+| `bash: =10000: No such file or directory` | `--slo ttft.p99<=10000` 未加引号，bash 把 `<` 当成重定向 | 改用 `--slo ttft.p99:10000`（免引号）或 `--slo 'ttft.p99<=10000'` |
+| `invalid SLO constraint 'ttft.p99': no operator or threshold found` | 运算符已被 shell 吃掉，ClawPerf 只收到了指标名 | 同上 |
+
+### Tokenizer
+
+**本地目录**一律严格离线加载（`local_files_only=True`），优先 transformers，失败再试 ModelScope——不查 hub、不下载、不卡住。hub 模型 id（如 `Qwen/Qwen3-0.6B`）则优先 ModelScope，再试 HuggingFace。可用 `CLAWPERF_TOKENIZER_BACKEND=transformers|modelscope` 强制指定后端。
+
+```
+INFO:clawperf:Loaded local tokenizer from /mnt/model/Qwen3-0.6B [local dir (transformers)] — vocab=151669, chat_template=yes
+```
+
+镜像里内置了一份可用的 tokenizer，可以用一条命令把"tokenizer 问题"和"端点问题"区分开：
+
+```bash
+docker run --rm ghcr.io/ucm-system/clawperf:0.6.1 clawperf --mode scenario \
+  --endpoint http://host.docker.internal:8000/v1 --model qwen3 \
+  --tokenizer /app/tokenizers/qwen3-0.6b --num-users 1 --max-turns 1 --no-preflight
+```
+
+| 现象 | 原因 | 解决 |
+|------|------|------|
+| `Tokenizer path '/mnt/model/X' does not exist on this machine` | 容器内看不到该路径（漏挂载）；报错会列出父目录内容 | 挂载：`-v /mnt/model:/mnt/model:ro` |
+| `Failed to load a local tokenizer ... Files present: ...` | 目录里没有 tokenizer 文件（只有权重），或后端未安装 | 指向含 `tokenizer.json` / `tokenizer_config.json` 的目录 |
+| `Failed to load tokenizer '<id>' from the model hub` | 离线机器或模型 id 写错 | 改用 `--tokenizer /本地目录` |
+
+### 预检探针（pre-flight）
+
+正式跑之前 ClawPerf 会发一个极小请求做预检，几秒内就能发现 endpoint/模型写错，而不是等到生成完内容才发现整轮全错。**传输类失败**（服务还在加载权重导致的连接被重置、超时）会带退避重试（`--preflight-retries`，默认 3 次）；4xx 则立即失败。报错只保留异常行，不再打印 EvalScope 的整段 aiohttp traceback：
+
+```
+[ClawPerf] Pre-flight: request to http://host:8000/v1/chat/completions failed:
+server rejected the probe (status=None, aiohttp.client_exceptions.ClientOSError: [Errno 104] Connection reset by peer).
+  Check --endpoint / --model / --api-key, and that the server has finished loading the model.
+  If the server is up and serves real traffic, re-run with --no-preflight to skip this probe.
+```
+
+若服务实际可用、但总是重置这个探针，加上 `--no-preflight` 即可跳过。
 
 ## 输出
 
@@ -388,7 +457,7 @@ ruff check src/ tests/
 
 | 工作流 | 触发条件 | 作用 |
 |--------|----------|------|
-| [`ci.yml`](.github/workflows/ci.yml) | push 到 `main`、PR | `ruff check`；Linux（3.10–3.13）+ Windows/macOS 全量测试；打包烟测（构建 → `twine check` → 干净 venv 安装 wheel → 跑两个入口命令）；amd64 与 arm64 **原生**镜像构建 + 镜像内功能自检 |
+| [`ci.yml`](.github/workflows/ci.yml) | push 到 `main`、PR | `ruff check`；Linux（3.10–3.13）+ Windows/macOS 全量测试；**端到端 job**（真实 mock server + 内置本地 tokenizer + 真实 bash 下的引号矩阵）；打包烟测（构建 → `twine check` → 干净 venv 安装 wheel → 跑两个入口命令）；amd64 与 arm64 **原生**镜像构建 + 镜像内功能自检 |
 | [`release.yml`](.github/workflows/release.yml) | 打 `v*` tag（或手动触发） | 测试门禁 → sdist + wheel → **PyPI** → 原生构建 `linux/amd64` 与 `linux/arm64` 镜像并推送 ghcr.io → 多架构 manifest → 创建 GitHub Release 并附上全部制品 |
 | [`pages.yml`](.github/workflows/pages.yml) | push 到 `main` 且改动 `docs/` | 校验站点（资源路径、标签闭合、SVG XML）并部署到 GitHub Pages |
 

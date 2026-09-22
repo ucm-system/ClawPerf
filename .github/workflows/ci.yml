@@ -85,6 +85,35 @@ jobs:
           NO_PROXY: "*"
         run: python -m pytest -q
 
+  e2e:
+    name: End-to-end (real mock server + local tokenizer)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install (editable, with dev extras)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,mock-server,agent,record,replay]"
+
+      - name: End-to-end run (scenario + slo + pre-flight failure modes)
+        run: python scripts/e2e_local.py
+
+      - name: Shell-quoting matrix in real bash
+        run: |
+          clawperf-mock-server --port 18081 --ttft 30 --tpot 2 &
+          sleep 5
+          bash scripts/e2e_bash.sh 18081 "$(command -v clawperf)" || true
+          # The unquoted form MUST fail (that is the point of the matrix) —
+          # assert the two supported spellings actually succeeded.
+          grep -q "SLO line: SLO=ttft.p99<=10000ms" /tmp/q.log
+          grep -q "e2e.max<=30000ms" /tmp/c.log
+
   package:
     name: Package (sdist + wheel)
     runs-on: ubuntu-latest

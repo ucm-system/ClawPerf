@@ -71,6 +71,10 @@
 | 9 | **录制代理静默追加**旧录制文件 | 多次会话悄悄混在一个文件里 | 追加时打印已有条数并提示如何重开 |
 | 10 | **JSONL 读取不兼容 BOM**（Windows 工具导出的文件） | `detected unknown` 误报 | 所有外部文件读取改 `utf-8-sig` |
 | 11 | **tokenizer 加载失败提示不含解法** | 用户不知可传 `--tokenizer` | 错误信息加入 `--tokenizer <path>` 提示 |
+| 12 | **SLO 约束被 shell 重定向吃掉**（0.6.1）：`--slo ttft.p99<=10000` 未加引号时 bash 把 `<` 当重定向，报 `bash: =10000: No such file or directory`，ClawPerf 根本没启动 | 用户照文档复制命令即失败，且完全看不出原因 | 新增**免引号分隔符语法** `:`/`=`（等价 `<=`）与单词运算符 `le/lt/ge/gt`；单个引号串内可用逗号写多个约束；只收到裸指标名时直接说明"shell 吃掉了 `<`"并给出两种改法 |
+| 13 | **布尔开关在真实命令行下全部失效**（0.6.1）：`main()` 调 `parse_args()`（argv=None），而"是否显式传了该 flag"只从显式 argv 构造、且只收集 `--` 前缀 token | `--no-preflight`、`--reset-cache`、`--metrics-samples`、`-v`、`--no-ignore-eos` 全部被静默丢弃（长跑才发现没生效） | 改从 `sys.argv[1:]` 构造；按 `_option_string_actions` 映射 dest（支持 `-v`、`--flag=value`、`-vv`）；显式 CLI 值即使等于默认值也压过 env/YAML |
+| 14 | **本地 tokenizer 先走 ModelScope，日志有歧义**（0.6.1）：本地目录先试 modelscope，日志写 `Loaded tokenizer from ModelScope: /local/path`（看起来像用了远端）；路径不存在时抛 hub 异常 | 离线/NPU 机器上"本地 tokenizer 加载不上"且无从排查 | 本地目录一律 `local_files_only=True` **严格离线**（transformers 优先 → modelscope 兜底）；日志写 `local dir (transformers)` + vocab + chat_template；路径不存在时列出父目录内容；两后端都失败时列出各自错误 + 目录文件清单；补 `tokenizer.json` 直载兜底与 `CLAWPERF_TOKENIZER_BACKEND` 开关 |
+| 15 | **预检探针单次失败即终止，并 dump 整段 traceback**（0.6.1）：evalscope 的 `AioHttpClient.post()` 不抛异常，而是把整段 aiohttp traceback 塞进 `bd.error` 且 `status_code=None`；旧代码按 status_code 判定重试，`None` 被当成"不可重试的 4xx" | 服务端加载权重期间的**一次**连接重置就终止整轮，并打印上百行 traceback；无任何跳过手段 | `status_code is None`（传输层失败）与 5xx 视为可重试，退避 1/2/4s、默认 3 次（`--preflight-retries`）；4xx 立即失败；报错只保留异常行（`_summarize_error`）；新增 `--no-preflight` |
 
 ## 5. 新增功能
 
@@ -91,6 +95,40 @@ PD 分离服务每个 prefill/decode 实例各暴露一个 `/metrics` 端口。�
 | E | scenario 多轮会话过代理 | 2 用户 × 4 轮 | 66.42% | per-engine 明细（66.43%/66.40%）首次落盘到 JSON |
 
 **真实发现（RR 路由 + 实例本地缓存）**：预期 RR 会把命中率砍半（25%），实测 47.41%——前缀缓存是内容寻址、懒填充的：每个实例首次见到某前缀就自行缓存，跨实例路由只损失**重复冷启动**（每实例每前缀多一次 miss，2.5pp），而不是一半命中。对 PD 部署的启示：prefill/decode 各自的本地缓存会各自累积前缀，跨实例的 KV 迁移省的是冷启动成本，稳态命中率由内容寻址保证。逐实例引擎表正是观察这一行为的工具。
+
+## 5.2 0.6.1 修复轮：真实用户命令复现 + 回归（`scripts/e2e_local.py` / `scripts/e2e_bash.sh`）
+
+用户实际命令（Linux 容器内 bash）：
+
+```bash
+clawperf --mode slo --endpoint http://141.111.32.62:8000/v1 --model /mnt/model/Qwen3.5-0.8B \
+  --slo ttft.p99<=10000 --slo tpot.avg<=50 --slo e2e.max<=30000 \
+  --slo-min-users 1 --slo-max-users 200 --slo-step-strategy geometric --output results_slo.json
+# bash: =10000: No such file or directory
+```
+
+在 **真实 bash**（WSL，`e2e_bash.sh`，`clawperf.exe` 经 interop 调用）中逐条复现：
+
+| # | 命令行 | 结果 |
+|---|--------|------|
+| 1 | `--slo ttft.p99<=10000`（未加引号） | `bash: =10000: No such file or directory`（用户原报错，clawperf 未启动） |
+| 2 | `--slo 'ttft.p99<=10000'`（加引号） | exit 0，`SLO=ttft.p99<=10000ms` |
+| 3 | `--slo ttft.p99:10000 --slo tpot.avg:50 --slo e2e.max:30000` | exit 0，`SLO=ttft.p99<=10000ms, tpot.avg<=50ms, e2e.max<=30000ms` |
+| 4 | `--slo ttft.p99`（被 shell 吃掉后剩下的） | exit 1 + 明确的"shell 吃掉了 `<`"指引（不再是无头报错） |
+
+`scripts/e2e_local.py`（真实 mock server + 真实本地 tokenizer 目录，19/19 通过；**已接入 CI 的 `e2e` job，每次 push 都跑**）：
+
+| # | 场景 | 结果 |
+|---|------|------|
+| A | scenario：`--tokenizer tokenizers/qwen3-0.6b`（本地目录） | exit 0；日志 `Loaded local tokenizer ... [local dir (transformers)] — vocab=151669, chat_template=yes`；**不出现** ModelScope 字样 |
+| B | slo：`ttft.p99:10000` / `tpot.avg:50` / `e2e.max:30000` | exit 0，容量曲线正常 |
+| C | slo：`--slo 'ttft.p99<=10000,tpot.avg<=50,e2e.max<=30000'`（单个引号串） | exit 0 |
+| D | **连接重置的服务端**（accept 后 SO_LINGER=0 直接 RST，模拟 vLLM 加载权重中） | 探针重试 **3 次**（1s/2s 退避）→ exit 1；报错为单行 `ClientOSError: [Errno 104] Connection reset by peer` + `--no-preflight` 提示，**无 traceback dump** |
+| E | 同一服务端 + `--no-preflight` | 探针被跳过，整轮正常跑完（全错 → exit 2，符合 CI 契约） |
+| F | `--tokenizer /mnt/model/DoesNotExist-0.8B` | exit 1，`does not exist on this machine` + 父目录内容清单 |
+| G | 产物 | `v061_scenario.json` / `v061_slo.json` 均为合法 JSON |
+
+新增回归用例（CI 覆盖）：`tests/test_cli_args.py`（12 例，锁死布尔开关/`-v`/`=` 形式/env 优先级）、`tests/test_preflight.py`（14 例，锁死重试与错误摘要）、`tests/test_tokenizer_loading.py`（18 例，含**真实**本地 tokenizer 离线加载）、`tests/test_slo.py` 新增 26 例（免引号语法矩阵）。
 
 ## 6. 可服务性 / 易用性评估（后续建议）
 

@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import platform
+import re
 import signal
 import statistics
 import time
@@ -38,6 +39,43 @@ def classify_error(bd) -> str:
             return "timeout"
         return "network"
     return ""
+
+
+def _is_transient_error(e: BaseException) -> bool:
+    """True for errors that may go away on their own (server still loading,
+    connection reset, timeout) as opposed to a hard rejection."""
+    if isinstance(e, (asyncio.TimeoutError, OSError, ConnectionError)):
+        # ConnectionResetError and aiohttp's ClientOSError/ClientConnectorError
+        # are OSError subclasses — exactly the "server isn't ready" family.
+        return True
+    return type(e).__name__ in {
+        "ClientConnectionError", "ClientOSError", "ClientConnectorError",
+        "ServerDisconnectedError", "ClientPayloadError", "ServerTimeoutError",
+    }
+
+
+def _summarize_error(raw, limit: int = 240) -> str:
+    """Condense an EvalScope ``BenchmarkData.error`` into one readable line.
+
+    EvalScope stores the *entire* traceback (aiohttp frames and all) in
+    ``bd.error``; printing that verbatim buries the actual cause. Keep the
+    final ``SomeError: message`` line instead.
+    """
+    text = str(raw or "").strip()
+    if not text:
+        return "no error detail"
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        return "no error detail"
+    exc_line = ""
+    for ln in reversed(lines):
+        if re.match(r"^[A-Za-z_][\w.]*(Error|Exception|Timeout|Interrupt)\b", ln):
+            exc_line = ln
+            break
+    summary = exc_line or lines[-1]
+    if len(summary) > limit:
+        summary = summary[:limit].rstrip() + " …"
+    return summary
 
 
 def _percentile(values: list[float], q: float) -> float:
@@ -281,10 +319,24 @@ class BenchmarkRunner:
         await self._finalize()
 
     async def _preflight_check(self):
-        """Send one minimal request to confirm the endpoint is reachable and
-        the model responds. Aborts early (RuntimeError) on failure so the user
-        doesn't wait through content generation + a full all-error run."""
+        """Send one minimal request to confirm the endpoint is reachable and the
+        model responds.
+
+        Transient failures (connection reset while the server is still loading
+        its weights, timeouts) are retried with backoff; a persistent failure
+        aborts the run with an actionable message instead of burning content
+        generation on an all-error benchmark. ``--no-preflight`` skips the probe
+        entirely (useful when the gateway resets this tiny probe but serves real
+        traffic fine).
+        """
+        if not self.config.preflight:
+            logger.info("Pre-flight check skipped (--no-preflight).")
+            return
+
+        attempts = max(1, int(self.config.preflight_retries or 1))
+        probe_timeout = min(30, self.config.request_timeout)
         logger.info("Pre-flight check: probing %s ...", self.config.endpoint)
+
         messages = [{"role": "user", "content": "hi"}]
         try:
             request_body = self._api_plugin.build_request(messages)
@@ -292,22 +344,48 @@ class BenchmarkRunner:
             raise RuntimeError(f"Pre-flight: failed to build request: {e}") from e
         if request_body is None:
             raise RuntimeError("Pre-flight: build_request returned None — check --endpoint/--model.")
-        try:
-            bd = await asyncio.wait_for(
-                self._http_client.post(request_body), timeout=min(30, self.config.request_timeout)
-            )
-        except asyncio.TimeoutError:
-            raise RuntimeError(
-                f"Pre-flight: request to {self.config.endpoint} timed out — is the server up?"
-            )
-        except Exception as e:
-            raise RuntimeError(f"Pre-flight: request to {self.config.endpoint} failed: {e}") from e
-        if not bd.success:
-            raise RuntimeError(
-                f"Pre-flight: server rejected the probe (status={bd.status_code}, "
-                f"error={bd.error}). Check --endpoint/--model/--api-key."
-            )
-        logger.info("Pre-flight check OK.")
+
+        last = "unknown error"
+        for attempt in range(1, attempts + 1):
+            transient = True
+            try:
+                bd = await asyncio.wait_for(
+                    self._http_client.post(request_body), timeout=probe_timeout
+                )
+            except asyncio.TimeoutError:
+                last = (f"timed out after {probe_timeout}s — is the server up and "
+                        "has it finished loading the model?")
+            except Exception as e:
+                last = f"{type(e).__name__}: {e}"
+                transient = _is_transient_error(e)
+            else:
+                if bd.success:
+                    logger.info("Pre-flight check OK (attempt %d/%d).", attempt, attempts)
+                    return
+                detail = _summarize_error(bd.error)
+                last = f"server rejected the probe (status={bd.status_code}, {detail})"
+                # EvalScope's client never raises: a transport failure comes back
+                # as status_code=None (connection reset, refused, DNS, TLS...).
+                # Those — and 5xx — are worth retrying; 4xx is not.
+                transient = bd.status_code is None or bd.status_code >= 500
+
+            if not transient:
+                break
+            if attempt < attempts:
+                delay = min(2 ** (attempt - 1), 8)
+                logger.warning(
+                    "Pre-flight attempt %d/%d failed (%s) — retrying in %ds ...",
+                    attempt, attempts, last, delay,
+                )
+                await asyncio.sleep(delay)
+
+        raise RuntimeError(
+            f"Pre-flight: request to {self.config.endpoint} failed: {last}.\n"
+            "  Check --endpoint / --model / --api-key, and that the server has "
+            "finished loading the model.\n"
+            "  If the server is up and serves real traffic, re-run with "
+            "--no-preflight to skip this probe."
+        )
 
     async def _run_hitrate(self):
         """Controlled prefix-cache hit-rate test: prefill prefixes, then measure.

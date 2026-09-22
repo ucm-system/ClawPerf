@@ -73,6 +73,65 @@ def test_satisfied_by_ops():
     assert not SloConstraint("ttft", "p99", "<=", 100).satisfied_by(None)
 
 
+# ── Shell-safe syntax (the `--slo ttft.p99<=1500` bash trap) ──────────────────
+
+@pytest.mark.parametrize("spec", [
+    "ttft.p99<=1500",
+    "ttft.p99:1500",
+    "ttft.p99=1500",
+    "ttft.p99:le:1500",
+    "ttft.p99 le 1500",
+    "ttft.p99<=1500ms",
+    "ttft.p99 : 1500",
+    "'ttft.p99:1500'",
+])
+def test_parse_constraint_shell_safe_equivalents(spec):
+    c = parse_slo_constraint(spec)
+    assert (c.metric, c.agg, c.op, c.value_ms) == ("ttft", "p99", "<=", 1500.0)
+
+
+@pytest.mark.parametrize("spec,op", [
+    ("ttft.p99:ge:1500", ">="),
+    ("ttft.p99:gt:1500", ">"),
+    ("ttft.p99:lt:1500", "<"),
+    ("ttft.p99>=1500", ">="),
+    ("ttft.p99>1500", ">"),
+    ("ttft.p99<1500", "<"),
+])
+def test_parse_constraint_word_and_symbol_operators(spec, op):
+    assert parse_slo_constraint(spec).op == op
+
+
+def test_parse_constraint_bare_metric_explains_shell_trap():
+    """`--slo ttft.p99<=10000` unquoted leaves ClawPerf with just 'ttft.p99'."""
+    with pytest.raises(ValueError) as ei:
+        parse_slo_constraint("ttft.p99")
+    msg = str(ei.value)
+    assert "shell consumed '<'" in msg
+    assert "ttft.p99:1500" in msg  # the fix is in the message
+
+
+def test_split_slo_specs_flattens_commas():
+    from clawperf.config import split_slo_specs
+    assert split_slo_specs(["ttft.p99<=1500,tpot.avg<=30", "e2e.max<=30000"]) == [
+        "ttft.p99<=1500", "tpot.avg<=30", "e2e.max<=30000",
+    ]
+    assert split_slo_specs("a;b , c") == ["a", "b", "c"]
+    assert split_slo_specs(None) == []
+
+
+def test_config_accepts_comma_separated_list_value():
+    cfg = BenchmarkConfig(mode="slo",
+                          slo_constraints=["ttft.p99:1500,tpot.avg:30", "e2e.max:30000"])
+    assert [c.label for c in cfg.effective_slo_constraints()] == [
+        "ttft.p99<=1500ms", "tpot.avg<=30ms", "e2e.max<=30000ms",
+    ]
+
+
+def test_mean_is_an_alias_for_avg():
+    assert parse_slo_constraint("tpot.mean:30").agg == "avg"
+
+
 # ── Config-level: normalization + legacy conversion ───────────────────────────
 
 def test_config_constraint_normalization_from_string():

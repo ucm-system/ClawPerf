@@ -127,15 +127,39 @@ The summary prints **TARGET vs MEASURED** hit rate (measured from `vllm:prefix_c
 
 ### slo — max concurrency under SLO
 
-Constraints are freely composable: any latency metric (`ttft` / `tpot` / `e2e`) × any aggregate (`avg`, `min`, `max`, `p25`, `p50`, `p75`, `p90`, `p95`, `p99`, `p99.9`, …) × any operator (`<=`, `<`, `>=`, `>`), in milliseconds. Repeat `--slo` to combine — all constraints AND together:
+Constraints are freely composable: any latency metric (`ttft` / `tpot` / `e2e`) × any aggregate (`avg`, `min`, `max`, `p25`, `p50`, `p75`, `p90`, `p95`, `p99`, `p99.9`, …) × any operator (`<=`, `<`, `>=`, `>`), in milliseconds. Repeat `--slo` to combine — all constraints AND together.
+
+> **Shell safety.** `<` and `>` are redirection operators in bash/zsh, so `--slo ttft.p99<=500` **unquoted** makes the shell eat the operator and try to read a file named `=500` (`bash: =500: No such file or directory` — ClawPerf never even starts). Either quote the spec, or use the separator form, which needs no quoting at all:
 
 ```bash
+# Shell-safe: ':' or '=' means '<='
 clawperf --mode slo \
   --endpoint http://localhost:8000/v1 --model qwen2.5-72b \
-  --slo ttft.p99<=500 --slo tpot.avg<=30 --slo e2e.max<=30000 \
+  --slo ttft.p99:500 --slo tpot.avg:30 --slo e2e.max:30000 \
   --slo-min-users 1 --slo-max-users 200 \
   --slo-step-strategy geometric \
   --output results_slo.json
+
+# Equivalent — quoted symbolic operators (or one quoted, comma-separated value)
+clawperf --mode slo ... \
+  --slo 'ttft.p99<=500' --slo 'tpot.avg<=30' --slo 'e2e.max<=30000'
+clawperf --mode slo ... --slo 'ttft.p99<=500,tpot.avg<=30,e2e.max<=30000'
+```
+
+| Written as | Means | Notes |
+|------------|-------|-------|
+| `ttft.p99:500` / `ttft.p99=500` | `ttft.p99 <= 500` | shell-safe, no quotes needed |
+| `ttft.p99<=500` | `ttft.p99 <= 500` | quote it in a shell |
+| `ttft.p99:le:500` / `ttft.p99 le 500` | `ttft.p99 <= 500` | word operators: `le lt ge gt` |
+| `ttft.p99:ge:500` | `ttft.p99 >= 500` | the only shell-safe way to say `>=` |
+| `ttft.p99<=500ms` | same, unit optional | |
+
+If the shell still eats the operator, ClawPerf detects the leftover bare metric and tells you exactly what happened instead of failing on an unrelated file:
+
+```
+[ClawPerf] configuration error: invalid SLO constraint 'ttft.p99': no operator or threshold
+found after the metric. If you wrote --slo ttft.p99<=1500 without quotes, your shell consumed
+'<' as a redirection ... quote it (--slo 'ttft.p99<=1500') or use --slo ttft.p99:1500.
 ```
 
 Legacy shorthand is still supported (and converted to `ttft.p99<=X` style internally):
@@ -278,10 +302,11 @@ backend: vllm
 
 | Mode | Core options |
 |------|--------------|
-| All | `--endpoint --model --api-key --request-timeout --output --verbose --config` |
+| All | `--endpoint --model --api-key --tokenizer --request-timeout --output --verbose --config` |
+| Reliability | `--no-preflight` (skip the pre-flight probe), `--preflight-retries N` (default 3) |
 | scenario | `--num-users --user-arrival --context-profile` or raw `--system-prefix-tokens/--user-prefix-tokens/--input-tokens-per-turn`, `--max-turns --max-context-tokens --compaction-prefix-increment --suite --max-consecutive-failures` |
 | hitrate | `--num-requests --input-len --output-len --hit-rate` or `--prefix-len`, `--prefix-num --prefill/--no-prefill --seed` |
-| slo | `--slo <metric>.<agg><op><ms>` (repeatable; ttft/tpot/e2e × avg/min/max/p25…p99.9), or legacy `--slo-ttft-ms/--slo-tpot-ms --slo-percentile`; `--slo-error-rate --slo-min-users --slo-max-users --slo-step-*` |
+| slo | `--slo <metric>.<agg><sep><ms>` (repeatable; ttft/tpot/e2e × avg/min/max/p25…p99.9; `<sep>` = `:`/`=`/`<=`/`<`/`>=`/`>`/`le`/`lt`/`ge`/`gt`), or legacy `--slo-ttft-ms/--slo-tpot-ms --slo-percentile`; `--slo-error-rate --slo-min-users --slo-max-users --slo-step-*` |
 | agent | `--agent-tasks --agent-task-file --agent-max-steps --agent-max-tokens --agent-shell-timeout --agent-workdir` |
 | record | `--upstream-endpoint --proxy-port --recording --upstream-api` |
 | replay | `--recording --history-mode live\|verbatim` |
@@ -330,6 +355,50 @@ clawperf --mode scenario \
 ```
 
 `--metrics-endpoint` is repeatable and also accepts comma-separated lists and `label=url` (default label: host:port). `--reset-cache` (and SLO's per-step reset) hits every instance's reset endpoint. In a PD deployment the prefill instance usually carries the prefix-cache hits — this table shows exactly where reuse happens.
+
+## Troubleshooting
+
+### `--slo` and other flags
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `bash: =10000: No such file or directory` | unquoted `<`/`>` in `--slo ttft.p99<=10000` — bash reads it as a redirection | `--slo ttft.p99:10000` (shell-safe) or `--slo 'ttft.p99<=10000'` |
+| `invalid SLO constraint 'ttft.p99': no operator or threshold found` | the shell already ate the operator; ClawPerf only received the bare metric | same as above |
+
+### Tokenizer
+
+A **local directory** is loaded strictly offline (`local_files_only=True`), transformers first, ModelScope as fallback — no hub lookup, no download, no hang. A hub id (`Qwen/Qwen3-0.6B`) still uses ModelScope first, then HuggingFace. Force one backend with `CLAWPERF_TOKENIZER_BACKEND=transformers|modelscope`.
+
+```
+INFO:clawperf:Loaded local tokenizer from /mnt/model/Qwen3-0.6B [local dir (transformers)] — vocab=151669, chat_template=yes
+```
+
+The container image bundles a known-good tokenizer, so you can isolate a tokenizer problem from an endpoint problem in one command:
+
+```bash
+docker run --rm ghcr.io/ucm-system/clawperf:0.6.1 clawperf --mode scenario \
+  --endpoint http://host.docker.internal:8000/v1 --model qwen3 \
+  --tokenizer /app/tokenizers/qwen3-0.6b --num-users 1 --max-turns 1 --no-preflight
+```
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `Tokenizer path '/mnt/model/X' does not exist on this machine` | the path isn't visible inside the container (missing `-v` mount) — the error lists the parent directory's contents | mount it: `-v /mnt/model:/mnt/model:ro` |
+| `Failed to load a local tokenizer ... Files present: ...` | the directory has no tokenizer files (weights only), or no backend is installed | point `--tokenizer` at the directory containing `tokenizer.json` / `tokenizer_config.json` |
+| `Failed to load tokenizer '<id>' from the model hub` | air-gapped host or a typo in the model id | use `--tokenizer /local/dir` |
+
+### Pre-flight probe
+
+Before a run, ClawPerf sends one tiny request to catch a wrong endpoint/model in seconds rather than after content generation. Transport failures (connection reset while the server is still loading its weights, timeouts) are **retried with backoff** (`--preflight-retries`, default 3); 4xx rejections fail immediately. The error keeps only the exception line, not EvalScope's full aiohttp traceback:
+
+```
+[ClawPerf] Pre-flight: request to http://host:8000/v1/chat/completions failed:
+server rejected the probe (status=None, aiohttp.client_exceptions.ClientOSError: [Errno 104] Connection reset by peer).
+  Check --endpoint / --model / --api-key, and that the server has finished loading the model.
+  If the server is up and serves real traffic, re-run with --no-preflight to skip this probe.
+```
+
+If the server serves real traffic but keeps resetting this probe, add `--no-preflight`.
 
 ## Output
 
@@ -404,7 +473,7 @@ ruff check src/ tests/
 
 | Workflow | Trigger | What it does |
 |----------|---------|--------------|
-| [`ci.yml`](.github/workflows/ci.yml) | push to `main`, pull requests | `ruff check`, the test suite on Linux (3.10–3.13) + Windows/macOS, a packaging smoke test (build → `twine check` → install the wheel in a clean venv → run both entry points), and native Docker image builds for amd64 **and** arm64 with an in-image functional check |
+| [`ci.yml`](.github/workflows/ci.yml) | push to `main`, pull requests | `ruff check`, the test suite on Linux (3.10–3.13) + Windows/macOS, an end-to-end job (real mock server + bundled local tokenizer + the shell-quoting matrix in real bash), a packaging smoke test (build → `twine check` → install the wheel in a clean venv → run both entry points), and native Docker image builds for amd64 **and** arm64 with an in-image functional check |
 | [`release.yml`](.github/workflows/release.yml) | tag `v*` (or manual dispatch) | test gate → sdist + wheel → **PyPI** → native `linux/amd64` and `linux/arm64` images pushed to ghcr.io → multi-arch manifest → GitHub Release with every artifact attached |
 | [`pages.yml`](.github/workflows/pages.yml) | push to `main` touching `docs/` | validates the site (asset paths, tag balance, SVG XML) and deploys it to GitHub Pages |
 

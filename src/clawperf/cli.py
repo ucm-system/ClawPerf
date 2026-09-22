@@ -77,6 +77,12 @@ def build_parser() -> argparse.ArgumentParser:
                         "e.g. ttft.p99<=1500, tpot.avg<=30, e2e.max<=30000. "
                         "Metrics: ttft|tpot|e2e; aggregates: avg|min|max|p25|p50|p75|p90|"
                         "p95|p99(…); operators: <=|<|>=|>. All constraints AND together. "
+                        "SHELL SAFETY: '<' and '>' are redirection operators, so quote the "
+                        "spec (--slo 'ttft.p99<=1500') or use the shell-safe separator form "
+                        "--slo ttft.p99:1500 (':' or '=' means '<=', and "
+                        "--slo ttft.p99:ge:1500 means '>='). Several constraints may be "
+                        "comma-separated inside one quoted value: "
+                        "--slo 'ttft.p99<=1500,tpot.avg<=30'. "
                         "When given, replaces the legacy --slo-ttft-ms/--slo-tpot-ms.")
     g.add_argument("--slo-ttft-ms", type=float, default=None,
                    help="Legacy: TTFT threshold at --slo-percentile (prefer --slo ttft.p99<=X).")
@@ -200,10 +206,20 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--api-key", type=str, default=None,
                    help="API key (env: CLAWPERF_API_KEY).")
     g.add_argument("--tokenizer", type=str, default=None,
-                   help="Tokenizer path (defaults to --model).")
+                   help="Tokenizer path or model id (defaults to --model). A local "
+                        "directory is loaded strictly offline (no hub lookup); "
+                        "CLAWPERF_TOKENIZER_BACKEND=transformers|modelscope forces a "
+                        "backend.")
     g.add_argument("--ignore-eos", action="store_true", default=True)
     g.add_argument("--no-ignore-eos", action="store_false", dest="ignore_eos")
     g.add_argument("--request-timeout", type=int, default=600)
+    g.add_argument("--no-preflight", action="store_false", dest="preflight", default=True,
+                   help="Skip the pre-flight probe (the one tiny request sent before a "
+                        "run to catch a wrong endpoint/model). Use it when the server "
+                        "resets that probe but serves real traffic.")
+    g.add_argument("--preflight-retries", type=int, default=3,
+                   help="Attempts for the pre-flight probe before giving up (default: 3; "
+                        "transient connection errors are retried with backoff).")
 
     # ── System metrics ──
     g = parser.add_argument_group("System Metrics")
@@ -237,6 +253,30 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _explicit_dests(parser: argparse.ArgumentParser, tokens: list[str]) -> set:
+    """Return the set of ``dest`` names the user actually spelled out.
+
+    Works for long flags (``--verbose``, ``--slo=x``), short flags (``-v``) and
+    bundled short flags (``-vv``). Deriving this from the token list — rather
+    than from a hard-coded option string per dest — is what makes boolean
+    flags such as ``--no-preflight``, ``--reset-cache`` and ``-v`` work when
+    the CLI is invoked normally (``main()`` passes ``argv=None``).
+    """
+    actions = parser._option_string_actions
+    passed: set = set()
+    for tok in tokens:
+        key = tok.split("=", 1)[0]
+        act = actions.get(key)
+        if act is not None:
+            passed.add(act.dest)
+        elif key.startswith("-") and not key.startswith("--") and len(key) > 2:
+            for ch in key[1:]:  # bundled short flags: -vv, -vq
+                short = actions.get("-" + ch)
+                if short is not None:
+                    passed.add(short.dest)
+    return passed
+
+
 def parse_args(argv: list[str] | None = None) -> BenchmarkConfig:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -246,28 +286,22 @@ def parse_args(argv: list[str] | None = None) -> BenchmarkConfig:
 
     # Build the CLI-override dict: only arguments the user *actually* passed,
     # so argparse defaults don't clobber CLAWPERF_* env vars / YAML values.
+    tokens = list(sys.argv[1:] if argv is None else argv)
     default_ns = parser.parse_args([])
     defaults = vars(default_ns)
-    raw_flags = set()
-    if argv is not None:
-        for tok in argv:
-            if tok.startswith("--"):
-                raw_flags.add(tok.split("=")[0])
-    dest_flags: dict = {}
-    for opt, act in parser._option_string_actions.items():
-        dest_flags.setdefault(act.dest, opt)
+    passed = _explicit_dests(parser, tokens)
 
     cli_args: dict = {}
     for k, v in vars(args).items():
         if v is None:
             continue
         if isinstance(v, bool):
-            flag = dest_flags.get(k)
-            # Booleans are only kept when explicitly passed (--flag / --no-flag).
-            if flag in raw_flags:
+            # Booleans are only kept when their flag was explicitly passed
+            # (--flag / --no-flag / -f).
+            if k in passed:
                 cli_args[k] = v
             continue
-        if v != defaults.get(k):
+        if k in passed or v != defaults.get(k):
             cli_args[k] = v
 
     # Use layered config: CLI > env vars > YAML > defaults.
