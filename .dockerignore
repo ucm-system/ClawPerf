@@ -26,6 +26,13 @@ comparison.md
 ops_e2e/
 *.log
 
+# ── Secrets / local environment (never send these to a builder) ───────────────
+.env
+.env.*
+*.env
+*.pem
+*.key
+
 # ── Local-only caches / editor & tool markers ─────────────────────────────────
 models/
 *.mdl
