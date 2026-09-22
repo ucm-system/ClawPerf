@@ -440,7 +440,25 @@ git tag v0.7.0 && git push origin main v0.7.0
 
 上传使用 `skip-existing`，重复执行发版不会因版本已存在而失败。
 
-一次性仓库配置：**Settings → Actions → General → Workflow permissions → Read and write**（`GITHUB_TOKEN` 需要该权限才能推 ghcr.io）；若希望匿名拉取镜像，在组织的 **Packages → clawperf → Package settings** 中把可见性改为 Public。
+一次性仓库配置：**Settings → Actions → General → Workflow permissions → Read and write**（`GITHUB_TOKEN` 需要该权限才能推 ghcr.io）。
+
+#### 让镜像可被匿名拉取
+
+ghcr 的包**默认是私有的**，未登录的 `docker pull` 会失败。可见性开关在包自己的设置页上，而**具体是哪个页面取决于包的归属**：
+
+- 用工作流的 `GITHUB_TOKEN` 推送（本仓库的做法）→ 包归属**仓库**：
+  `https://github.com/<owner>/<repo>/pkgs/container/clawperf` → **Package settings** → *Danger Zone* → **Change visibility** → Public。
+- 用个人 PAT 推送 → 包归属**组织**，GitHub **不允许修改其可见性**，只能删除后用 `GITHUB_TOKEN` 重新推送。
+
+一旦改为公开，后续发版会保持公开（可见性是包级别的属性，不是某个版本的属性）。`release.yml` 也会尝试自动修改，若无权限则给出警告并提示手工路径。
+
+想确认自己的包属于哪种情况：
+
+```bash
+gh auth refresh -s read:packages,write:packages     # 这些接口需要 packages 权限
+gh api /repos/<owner>/<repo>/packages/container/clawperf \
+  --jq '{visibility, repository: .repository.full_name, owner: .owner.login}'
+```
 
 ## License
 

@@ -456,7 +456,25 @@ The `pypi` job authenticates in whichever way is configured, so nothing needs ed
 
 Uploads use `skip-existing`, so re-running a release never fails on an already-published version.
 
-One-time repository setup: **Settings → Actions → General → Workflow permissions → Read and write** (so `GITHUB_TOKEN` may push to ghcr.io), and make the package public under the org's **Packages → clawperf → Package settings** if anonymous pulls are wanted.
+One-time repository setup: **Settings → Actions → General → Workflow permissions → Read and write** (so `GITHUB_TOKEN` may push to ghcr.io).
+
+#### Making the image publicly pullable
+
+ghcr packages are **private by default**, so `docker pull` fails for anyone who is not logged in. The visibility switch lives on the package's own settings page — and *which* page depends on who owns the package:
+
+- Pushed by the workflow's `GITHUB_TOKEN` (what this repo does) → the package belongs to the **repository**:
+  `https://github.com/<owner>/<repo>/pkgs/container/clawperf` → **Package settings** → *Danger Zone* → **Change visibility** → Public.
+- Pushed with a personal access token → the package belongs to the **organization** instead, and GitHub does not allow changing its visibility at all; it has to be deleted and re-pushed with `GITHUB_TOKEN`.
+
+Once public, it stays public across releases (visibility is a property of the package, not of a single version). `release.yml` also attempts the change automatically and emits a warning with the manual path if it is not permitted.
+
+To inspect what you actually have:
+
+```bash
+gh auth refresh -s read:packages,write:packages     # the packages scope is needed for these endpoints
+gh api /repos/<owner>/<repo>/packages/container/clawperf \
+  --jq '{visibility, repository: .repository.full_name, owner: .owner.login}'
+```
 
 ## License
 
