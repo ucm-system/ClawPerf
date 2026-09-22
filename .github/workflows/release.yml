@@ -130,7 +130,42 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # ── 3. Container images: native build per architecture ──────────────────────
+  # ── 3. PyPI ─────────────────────────────────────────────────────────────────
+  #    Stable tags publish to PyPI; prereleases (v1.2.3-rc1) deliberately do
+  #    not. Auth: PYPI_API_TOKEN secret when present, otherwise OIDC trusted
+  #    publishing (no long-lived credential) — see the README's Releasing notes.
+  pypi:
+    name: Publish to PyPI
+    needs: [verify, dist]
+    if: needs.verify.outputs.prerelease == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # trusted publishing (used when the token secret is unset)
+    env:
+      PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Show the distributions to upload
+        run: ls -lh dist/
+
+      - name: Publish with an API token
+        if: env.PYPI_TOKEN != ''
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true   # re-running a release must not fail on an existing version
+
+      - name: Publish via Trusted Publishing (OIDC)
+        if: env.PYPI_TOKEN == ''
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+
+  # ── 4. Container images: native build per architecture ──────────────────────
   #    amd64 → ubuntu-latest (native x64)
   #    arm64 → ubuntu-24.04-arm (native ARM; QEMU is used only as a fallback
   #            when the job is dispatched onto an x64 runner)
@@ -205,7 +240,7 @@ jobs:
           compression-level: 0   # already gzip-compressed
           retention-days: 7
 
-  # ── 4. Combine the per-arch images into multi-arch tags ─────────────────────
+  # ── 5. Combine the per-arch images into multi-arch tags ─────────────────────
   manifest:
     name: Publish multi-arch tags
     needs: [verify, image]
@@ -248,10 +283,10 @@ jobs:
             "${IMAGE}:${VERSION}-amd64" "${IMAGE}:${VERSION}-arm64"
           docker buildx imagetools inspect "${IMAGE}:${VERSION}"
 
-  # ── 5. GitHub Release with every artifact attached ──────────────────────────
+  # ── 6. GitHub Release with every artifact attached ──────────────────────────
   release:
     name: Publish GitHub Release
-    needs: [verify, dist, image, manifest]
+    needs: [verify, dist, pypi, image, manifest]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -308,7 +343,15 @@ jobs:
 
           ## 📦 Python packages
 
-          The wheel ships every optional extra; install the ones you need:
+          From PyPI:
+
+          \`\`\`bash
+          pip install clawperf==${VERSION}
+          pip install "clawperf[agent,record,replay,mock-server]==${VERSION}"
+          \`\`\`
+
+          Or from the wheel attached below (works offline). It ships every
+          optional extra; install the ones you need:
 
           \`\`\`bash
           pip install clawperf-${VERSION}-py3-none-any.whl

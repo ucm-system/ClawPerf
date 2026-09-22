@@ -405,7 +405,7 @@ ruff check src/ tests/
 | Workflow | Trigger | What it does |
 |----------|---------|--------------|
 | [`ci.yml`](.github/workflows/ci.yml) | push to `main`, pull requests | `ruff check`, the test suite on Linux (3.10–3.13) + Windows/macOS, a packaging smoke test (build → `twine check` → install the wheel in a clean venv → run both entry points), and native Docker image builds for amd64 **and** arm64 with an in-image functional check |
-| [`release.yml`](.github/workflows/release.yml) | tag `v*` (or manual dispatch) | test gate → sdist + wheel → native `linux/amd64` and `linux/arm64` images pushed to ghcr.io → multi-arch manifest → GitHub Release with every artifact attached |
+| [`release.yml`](.github/workflows/release.yml) | tag `v*` (or manual dispatch) | test gate → sdist + wheel → **PyPI** → native `linux/amd64` and `linux/arm64` images pushed to ghcr.io → multi-arch manifest → GitHub Release with every artifact attached |
 | [`pages.yml`](.github/workflows/pages.yml) | push to `main` touching `docs/` | validates the site (asset paths, tag balance, SVG XML) and deploys it to GitHub Pages |
 
 ### Project site
@@ -434,16 +434,27 @@ git tag v0.7.0 && git push origin main v0.7.0
 
 The `verify` job fails fast if the tag does not match `clawperf.__version__`, so the two can never drift.
 
-The release then produces:
+The release then produces, in one go:
 
-| Artifact | Notes |
-|----------|-------|
-| `clawperf-<v>-py3-none-any.whl` | universal wheel — one file, all extras available |
-| `clawperf-<v>.tar.gz` | source distribution |
-| `clawperf-<v>-linux-amd64.tar.gz` / `-linux-arm64.tar.gz` | offline Docker images (`docker load`) |
-| `SHA256SUMS` | checksums for the wheels and image tarballs |
+| Where | What |
+|-------|------|
+| **PyPI** | `clawperf==<version>` (wheel + sdist) — stable tags only |
+| **ghcr.io** | multi-arch image `:<version>`, `:<major>.<minor>`, `:latest` |
+| **GitHub Release** | `clawperf-<v>-py3-none-any.whl`, `clawperf-<v>.tar.gz`, `clawperf-<v>-linux-amd64.tar.gz`, `clawperf-<v>-linux-arm64.tar.gz`, `SHA256SUMS` |
 
-Container tags: `:<version>`, `:<major>.<minor>` and `:latest` (prerelease tags such as `v0.7.0-rc1` publish without moving `latest`). Images are built **natively per architecture** — `ubuntu-latest` for amd64, `ubuntu-24.04-arm` for arm64 — so no QEMU emulation is involved; re-dispatch the workflow with `arm_runner: ubuntu-latest` if the ARM runner is unavailable.
+Container tags: `:<version>`, `:<major>.<minor>` and `:latest` (prerelease tags such as `v0.7.0-rc1` publish images and release assets but do **not** move `latest` and do **not** go to PyPI). Images are built **natively per architecture** — `ubuntu-latest` for amd64, `ubuntu-24.04-arm` for arm64 — so no QEMU emulation is involved; re-dispatch the workflow with `arm_runner: ubuntu-latest` if the ARM runner is unavailable.
+
+#### PyPI credentials
+
+The `pypi` job authenticates in whichever way is configured, so nothing needs editing when you switch:
+
+1. **API token** (what this repo uses): store it as the repository secret `PYPI_API_TOKEN` —
+   ```bash
+   gh secret set PYPI_API_TOKEN --repo ucm-system/ClawPerf   # paste the pypi-... token
+   ```
+2. **Trusted Publishing** (no long-lived secret): add a publisher on PyPI (project → *Publishing* → owner `ucm-system`, repository `ClawPerf`, workflow `release.yml`) and delete the secret. The workflow automatically falls back to OIDC when `PYPI_API_TOKEN` is absent.
+
+Uploads use `skip-existing`, so re-running a release never fails on an already-published version.
 
 One-time repository setup: **Settings → Actions → General → Workflow permissions → Read and write** (so `GITHUB_TOKEN` may push to ghcr.io), and make the package public under the org's **Packages → clawperf → Package settings** if anonymous pulls are wanted.
 

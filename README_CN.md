@@ -389,7 +389,7 @@ ruff check src/ tests/
 | 工作流 | 触发条件 | 作用 |
 |--------|----------|------|
 | [`ci.yml`](.github/workflows/ci.yml) | push 到 `main`、PR | `ruff check`；Linux（3.10–3.13）+ Windows/macOS 全量测试；打包烟测（构建 → `twine check` → 干净 venv 安装 wheel → 跑两个入口命令）；amd64 与 arm64 **原生**镜像构建 + 镜像内功能自检 |
-| [`release.yml`](.github/workflows/release.yml) | 打 `v*` tag（或手动触发） | 测试门禁 → sdist + wheel → 原生构建 `linux/amd64` 与 `linux/arm64` 镜像并推送 ghcr.io → 多架构 manifest → 创建 GitHub Release 并附上全部制品 |
+| [`release.yml`](.github/workflows/release.yml) | 打 `v*` tag（或手动触发） | 测试门禁 → sdist + wheel → **PyPI** → 原生构建 `linux/amd64` 与 `linux/arm64` 镜像并推送 ghcr.io → 多架构 manifest → 创建 GitHub Release 并附上全部制品 |
 | [`pages.yml`](.github/workflows/pages.yml) | push 到 `main` 且改动 `docs/` | 校验站点（资源路径、标签闭合、SVG XML）并部署到 GitHub Pages |
 
 ### 项目主页
@@ -418,16 +418,27 @@ git tag v0.7.0 && git push origin main v0.7.0
 
 `verify` 任务会在 tag 与 `clawperf.__version__` 不一致时立即失败，两者不可能悄悄错位。
 
-随后自动产出：
+随后一次性产出：
 
-| 制品 | 说明 |
+| 位置 | 内容 |
 |------|------|
-| `clawperf-<v>-py3-none-any.whl` | 通用 wheel —— 一个文件，所有 extras 可用 |
-| `clawperf-<v>.tar.gz` | 源码包 |
-| `clawperf-<v>-linux-amd64.tar.gz` / `-linux-arm64.tar.gz` | 离线 Docker 镜像（`docker load` 导入） |
-| `SHA256SUMS` | wheel 与镜像包的校验和 |
+| **PyPI** | `clawperf==<版本>`（wheel + 源码包）—— 仅正式版 |
+| **ghcr.io** | 多架构镜像 `:<版本>`、`:<主.次>`、`:latest` |
+| **GitHub Release** | `clawperf-<v>-py3-none-any.whl`、`clawperf-<v>.tar.gz`、`clawperf-<v>-linux-amd64.tar.gz`、`clawperf-<v>-linux-arm64.tar.gz`、`SHA256SUMS` |
 
-镜像 tag：`:<版本>`、`:<主.次>`、`:latest`（预发布 tag 如 `v0.7.0-rc1` 不会移动 `latest`）。镜像**按架构原生构建** —— amd64 用 `ubuntu-latest`，arm64 用 `ubuntu-24.04-arm`，全程不涉及 QEMU 模拟；若 ARM runner 不可用，可手动触发并传 `arm_runner: ubuntu-latest`。
+镜像 tag：`:<版本>`、`:<主.次>`、`:latest`（预发布 tag 如 `v0.7.0-rc1` 会产出镜像与 Release 制品，但**不移动 `latest`**，也**不推 PyPI**）。镜像**按架构原生构建** —— amd64 用 `ubuntu-latest`，arm64 用 `ubuntu-24.04-arm`，全程不涉及 QEMU 模拟；若 ARM runner 不可用，可手动触发并传 `arm_runner: ubuntu-latest`。
+
+#### PyPI 凭据
+
+`pypi` 任务会按当前配置自动选择认证方式，切换时无需改代码：
+
+1. **API token**（本仓库采用）：存为仓库 secret `PYPI_API_TOKEN` ——
+   ```bash
+   gh secret set PYPI_API_TOKEN --repo ucm-system/ClawPerf   # 粘贴 pypi-... token
+   ```
+2. **Trusted Publishing**（无需长期密钥）：在 PyPI 项目 → *Publishing* 添加发布者（owner `ucm-system`、repository `ClawPerf`、workflow `release.yml`），然后删除该 secret。当 `PYPI_API_TOKEN` 不存在时，工作流会自动回退到 OIDC。
+
+上传使用 `skip-existing`，重复执行发版不会因版本已存在而失败。
 
 一次性仓库配置：**Settings → Actions → General → Workflow permissions → Read and write**（`GITHUB_TOKEN` 需要该权限才能推 ghcr.io）；若希望匿名拉取镜像，在组织的 **Packages → clawperf → Package settings** 中把可见性改为 Public。
 
