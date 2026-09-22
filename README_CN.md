@@ -18,7 +18,7 @@
 |------|------|
 | `scenario`（默认） | 多轮长上下文负载：N 个用户各自维护独立增长的对话（系统前缀 + 用户前缀 + 历史 + 当前输入），带追加式压缩。核心 Agent 负载模拟器。 |
 | `hitrate` | 受控前缀缓存命中率测试：构造 `[共享前缀][边界][唯一后缀]` 提示，预填充后对比**目标 vs 实测**命中率（取自服务端 Prometheus 计数器）。 |
-| `slo` | SLO 驱动的容量扫描：几何爬坡 + 二分精化，找出满足 P{百分位} TTFT/TPOT 的**最大并发用户数**。 |
+| `slo` | SLO 驱动的容量扫描：几何爬坡 + 二分精化，找出满足目标约束的**最大并发用户数** —— `ttft`/`tpot`/`e2e` × `avg`/`P50`/`P90`/`P99`/`max` 任意组合。 |
 | `agent` | 真实编码 Agent：模型通过 OpenAI 工具调用真实读写文件、执行 shell，跨多轮增长上下文。 |
 | `trace` | KV-cache 命中率分析 + 真实回放：本地模拟块级前缀缓存（LRU/FIFO 驱逐、预算扫描）；trace 含 messages 时对端点发真实请求。 |
 | `record` | 录制代理：坐在真实 Agent（Claude Code 等）与 LLM 端点之间，把每个请求/响应往返录成 JSONL。 |
@@ -51,6 +51,10 @@ git clone https://github.com/ucm-system/ClawPerf.git
 cd ClawPerf
 pip install -e ".[dev]"
 ```
+
+说明：
+- **Windows**：开箱即用 —— ClawPerf 强制 UTF-8 控制台输出，帮助文本与报告（✓/✅/█）在 GBK 代码页下不再崩溃；JSONL 读取兼容带 BOM 的文件。
+- **无 GPU / CI**：`clawperf-mock-server` 提供完整假端点（字典树前缀缓存 + `/metrics`）—— 除 `agent`/`trace` 真实回放外的所有模式都能跑，命中率目标可端到端验证（见 E2E 报告）。
 
 ## 快速开始
 
@@ -92,16 +96,33 @@ clawperf --mode hitrate \
 
 ### slo — SLO 约束下最大并发
 
+约束可自由组合：任意时延指标（`ttft` / `tpot` / `e2e`）× 任意统计量（`avg`、`min`、`max`、`p25`、`p50`、`p75`、`p90`、`p95`、`p99`、`p99.9` …）× 任意比较符（`<=`、`<`、`>=`、`>`），单位毫秒。`--slo` 可重复指定，多个约束之间为**与**关系：
+
 ```bash
 clawperf --mode slo \
   --endpoint http://localhost:8000/v1 --model qwen2.5-72b \
-  --slo-ttft-ms 500 --slo-tpot-ms 30 \   # P99 必须 ≤ 这些值
+  --slo ttft.p99<=500 --slo tpot.avg<=30 --slo e2e.max<=30000 \
   --slo-min-users 1 --slo-max-users 200 \
   --slo-step-strategy geometric \
   --output results_slo.json
 ```
 
-输出：容量曲线（用户数 vs P99 TTFT/TPOT/错误率/SLO 是否满足）与最大可支撑用户数。
+旧写法依然支持（内部自动转换为 `ttft.p99<=X` 形式）：
+
+```bash
+clawperf --mode slo ... --slo-ttft-ms 500 --slo-tpot-ms 30 --slo-percentile 0.99
+```
+
+输出：容量曲线（每个约束一列：用户数 × 各约束值 × SLO 判定）与最大可支撑用户数。真实 vLLM-Ascend 端点上的示例：
+
+```
+| Users | ttft.p99 | tpot.avg |   e2e.max | Error | SLO |
+|     1 |  228.2ms |    8.6ms |  8887.7ms |  0.0% |  ✓  |
+|     4 |  624.2ms |   14.7ms | 15471.1ms |  0.0% |  ✓  |
+|     6 |  945.1ms |   20.9ms | 22360.6ms |  0.0% |  ✗  |
+SLO: ttft.p99<=1500ms, tpot.avg<=30ms, e2e.max<=20000ms
+Max sustained users: 5
+```
 
 ### agent — 真实编码 Agent
 
@@ -124,16 +145,21 @@ clawperf --mode agent \
 clawperf --mode trace --trace-file trace.jsonl --budget-sweep
 
 # trace 带 messages → 同时对端点发真实请求回放。
+# --model-context-length 会把每个请求的 max_tokens 裁剪到剩余窗口
+# （给了 --tokenizer 时精确分词），仅输入就超窗的请求会被明确跳过。
 clawperf --mode trace \
   --trace-file trace.jsonl \
   --endpoint http://localhost:8000/v1 --model qwen3 \
+  --model-context-length 32768 \
   --trace-users 3                    # 会话级并发
 ```
 
 ### record & replay — 录制真实 Agent 会话再回放
 
 ```bash
-# 终端 1：启动录制代理（Agent 把 base URL 指向这里）
+# 终端 1：启动录制代理（Agent 把 base URL 指向这里）。
+# 同时接受 OpenAI（/v1/chat/completions）与 Anthropic（/v1/messages）客户端，
+# Anthropic→OpenAI 实时互译。录制文件跨重启追加（会提示保留了已有条数）。
 clawperf --mode record --upstream-endpoint http://localhost:8000 \
   --proxy-port 9090 --recording session.jsonl
 
@@ -215,11 +241,11 @@ backend: vllm
 | 全部 | `--endpoint --model --api-key --request-timeout --output --verbose --config` |
 | scenario | `--num-users --user-arrival --context-profile` 或原生 `--system-prefix-tokens/--user-prefix-tokens/--input-tokens-per-turn`，`--max-turns --max-context-tokens --compaction-prefix-increment --suite --max-consecutive-failures` |
 | hitrate | `--num-requests --input-len --output-len --hit-rate` 或 `--prefix-len`，`--prefix-num --prefill/--no-prefill --seed` |
-| slo | `--slo-ttft-ms/--slo-tpot-ms --slo-percentile --slo-error-rate --slo-min-users --slo-max-users --slo-step-*` |
+| slo | `--slo <指标>.<统计量><运算符><毫秒>`（可重复；ttft/tpot/e2e × avg/min/max/p25…p99.9），或旧式 `--slo-ttft-ms/--slo-tpot-ms --slo-percentile`；`--slo-error-rate --slo-min-users --slo-max-users --slo-step-*` |
 | agent | `--agent-tasks --agent-task-file --agent-max-steps --agent-max-tokens --agent-shell-timeout --agent-workdir` |
 | record | `--upstream-endpoint --proxy-port --recording --upstream-api` |
 | replay | `--recording --history-mode live\|verbatim` |
-| trace | `--trace-file --cache-budget-tokens/--cache-budget-gb --eviction-policy --trace-block-size --budget-sweep --trace-users --kv-bytes-per-token` |
+| trace | `--trace-file --cache-budget-tokens/--cache-budget-gb --eviction-policy --trace-block-size --budget-sweep --trace-users --kv-bytes-per-token --model-context-length` |
 | 共享并发 | `--concurrency`（请求级：hitrate/replay/trace）；`--trace-users`（会话级：trace） |
 | 指标 | `--metrics-endpoint --metrics-interval --metrics-samples --reset-cache --backend` |
 

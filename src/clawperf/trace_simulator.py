@@ -78,8 +78,9 @@ def _open_text(path: str | Path) -> Any:
         return sys.stdin
     path = Path(path)
     if str(path).endswith(".gz"):
-        return gzip.open(path, "rt", encoding="utf-8", errors="replace")
-    return path.open("r", encoding="utf-8", errors="replace")
+        # utf-8-sig: tolerate BOMs in traces produced by Windows tools.
+        return gzip.open(path, "rt", encoding="utf-8-sig", errors="replace")
+    return path.open("r", encoding="utf-8-sig", errors="replace")
 
 
 class _Interner:
@@ -518,6 +519,63 @@ TraceReplayResult = ReplayResult  # backward-compatible alias
 replay_summary = summarize_replay  # backward-compatible alias
 
 
+def clamp_replay_max_tokens(
+    index: int,
+    messages: Optional[List[Dict]],
+    input_length: int,
+    max_tokens: int,
+    max_context_tokens: int,
+    token_counter=None,
+) -> Tuple[str, Optional[int], Optional[int]]:
+    """Decide one replay request's ``max_tokens`` under a context window.
+
+    Returns ``(action, max_tokens, in_tokens)``:
+
+    - ``("none", None, n)``     — fits as-is (n = measured/estimated input)
+    - ``("clamp", mt, n)``      — clamp ``max_tokens`` to ``mt``
+    - ``("overflow", None, n)`` — input alone >= window; request impossible
+
+    When ``token_counter`` (a ``messages -> tokens`` callable) is given, exact
+    chat-templated counts are used. Otherwise the trace's chars/4
+    ``input_length`` estimate is combined with a 10% safety margin.
+    ``max_context_tokens <= 0`` disables the clamp entirely.
+    """
+    if max_context_tokens <= 0:
+        return "none", None, None
+    if token_counter is not None:
+        try:
+            in_tok = token_counter(messages)
+            if in_tok >= max_context_tokens:
+                return "overflow", None, in_tok
+            room = max_context_tokens - in_tok
+            if room >= max_tokens:
+                return "none", None, in_tok
+            logger.info(
+                "replay: request %d input %d tokens — clamping max_tokens "
+                "%d -> %d to fit the %d-token window (exact count)",
+                index, in_tok, max_tokens, room, max_context_tokens,
+            )
+            return "clamp", max(16, room), in_tok
+        except Exception as exc:
+            logger.warning(
+                "replay: token counting failed for request %d (%s) — using "
+                "the trace estimate", index, exc,
+            )
+    # Fallback: chars/4 estimate + 10% safety margin.
+    effective_window = int(max_context_tokens * 0.9)
+    if input_length >= effective_window:
+        return "overflow", None, input_length
+    room = effective_window - input_length
+    if room >= max_tokens:
+        return "none", None, input_length
+    logger.info(
+        "replay: request %d input ~%d tokens — clamping max_tokens "
+        "%d -> %d to fit the %d-token window (10%% margin)",
+        index, input_length, max_tokens, room, max_context_tokens,
+    )
+    return "clamp", max(16, room), input_length
+
+
 async def replay_trace_requests(
     entries: List[TraceEntry],
     endpoint: str,
@@ -527,6 +585,8 @@ async def replay_trace_requests(
     concurrency: int = 1,
     active_users: int = 1,
     max_tokens: int = 512,
+    max_context_tokens: int = 0,
+    tokenizer_path: str = "",
 ) -> Tuple[List[TraceReplayResult], float]:
     """Replay real requests from a trace against a live LLM endpoint.
 
@@ -541,16 +601,74 @@ async def replay_trace_requests(
     Each entry's messages are sent as a streaming chat-completions request,
     measuring TTFT, e2e latency, prompt/completion tokens, and ITL — the
     real-request analog of the local hash-based simulation.
+
+    When ``max_context_tokens`` (the model's context window, e.g. from
+    ``--model-context-length``) is known, each request's ``max_tokens`` is
+    clamped to the remaining window (see :func:`clamp_replay_max_tokens`) so
+    cumulative session contexts don't overflow with a hard 400; requests whose
+    input alone exceeds the window are skipped with a clear error. When
+    ``tokenizer_path`` loads, the clamp uses exact chat-templated token counts.
     """
     replayable = [e for e in entries if e.messages]
     if not replayable:
         return [], 0.0
 
+    # Optional exact token counting for the clamp.
+    token_counter = None
+    if max_context_tokens > 0 and tokenizer_path:
+        try:
+            from clawperf.tokenizer import TokenizerManager
+            tm = TokenizerManager(tokenizer_path)
+            tm.tokenizer  # force load now — fail before any request is sent
+            token_counter = tm.count_chat_tokens
+            logger.info("replay: exact token counting via tokenizer %s", tokenizer_path)
+        except Exception as e:
+            logger.warning(
+                "replay: tokenizer %r unavailable (%s) — context clamp falls "
+                "back to the trace's chars/4 estimate + 10%% margin",
+                tokenizer_path, e,
+            )
+
     # Flat dicts in the format ReplayPlayer.extract_request understands.
-    flat = [
-        {"index": e.index, "user_id": e.user_id, "messages": e.messages}
-        for e in replayable
-    ]
+    # Clamp per-request max_tokens to the model's context window when known;
+    # requests whose input alone exceeds the window are skipped with a clear
+    # error instead of burning a server round-trip on an inevitable 400.
+    flat: List[Dict] = []
+    skipped: List[TraceReplayResult] = []
+    clamped = 0
+    for e in replayable:
+        item: Dict = {"index": e.index, "user_id": e.user_id, "messages": e.messages}
+        action, mt, in_tok = clamp_replay_max_tokens(
+            e.index, e.messages, e.input_length, max_tokens,
+            max_context_tokens, token_counter=token_counter,
+        )
+        if action == "overflow":
+            logger.warning(
+                "replay: request %d input %s tokens >= window %d — skipping "
+                "(cannot fit regardless of max_tokens)",
+                e.index, f"{in_tok:,}" if in_tok is not None else "?", max_context_tokens,
+            )
+            skipped.append(TraceReplayResult(
+                index=e.index, success=False,
+                error=(f"context overflow: input {in_tok} tokens >= model context "
+                       f"window {max_context_tokens} (--model-context-length); "
+                       "request skipped — use a larger-window model or trim the trace"),
+            ))
+            continue
+        if action == "clamp":
+            item["max_tokens"] = mt
+            clamped += 1
+        flat.append(item)
+    if clamped:
+        logger.info(
+            "replay: clamped max_tokens on %d/%d requests to fit the "
+            "--model-context-length window", clamped, len(flat),
+        )
+    if skipped:
+        logger.warning(
+            "replay: %d/%d requests skipped — input alone exceeds the "
+            "--model-context-length window", len(skipped), len(replayable),
+        )
     t0 = time.monotonic()
     player = ReplayPlayer(
         endpoint=endpoint, model=model, api_key=api_key,
@@ -562,6 +680,7 @@ async def replay_trace_requests(
         results = await player.replay(flat)
     finally:
         await player.close()
+    results = list(results) + skipped
     results.sort(key=lambda r: r.index)
     bench_time_s = time.monotonic() - t0
     return results, bench_time_s

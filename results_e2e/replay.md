@@ -3,11 +3,11 @@
 | Field | Value |
 |-------|-------|
 | Model | `qwen3` |
-| Endpoint | `http://110.138.0.3:8123/v1` |
+| Endpoint | `http://110.138.0.3:9155/v1` |
 | Backend | vllm |
 | Mode | `replay` |
 | Setup Time | 0.00s |
-| Bench Time | 98.20s |
+| Bench Time | 93.84s |
 
 ## Verdict: ❌ POOR
 

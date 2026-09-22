@@ -3,31 +3,33 @@
 | Field | Value |
 |-------|-------|
 | Model | `qwen3` |
-| Endpoint | `http://110.138.0.3:8123/v1` |
+| Endpoint | `http://110.138.0.3:9155/v1` |
 | Backend | vllm |
 | Mode | `slo` |
-| SLO | TTFT P99<=1500.0ms |
-| Max Users | 8 |
-| Setup Time | 14.83s |
-| Bench Time | 245.34s |
+| SLO | ttft.p99<=1500ms, tpot.avg<=30ms, e2e.max<=20000ms |
+| Max Users | 5 |
+| Setup Time | 34.69s |
+| Bench Time | 394.06s |
 
 ## Verdict: ✅ GOOD
 
-- **Max sustained users:** 8
+- **Max sustained users:** 5
 
 ## Key Findings
 
-- Max sustained users meeting SLO: 8
-- SLO criteria: TTFT P99<=1500.0ms
+- Max sustained users meeting SLO: 5
+- SLO criteria: ttft.p99<=1500ms, tpot.avg<=30ms, e2e.max<=20000ms
 
 ## Summary
 
-| Users | P99 TTFT | P99 TPOT | Error | SLO |
-|-------|----------|----------|-------|-----|
-| 1 | 207ms | 8.21ms | 0.0% | ✅ |
-| 2 | 318ms | 9.17ms | 0.0% | ✅ |
-| 4 | 515ms | 15.22ms | 0.0% | ✅ |
-| 8 | 743ms | 26.64ms | 0.0% | ✅ |
+| Users | ttft.p99 | tpot.avg | e2e.max | Error | SLO |
+|---|---|---|---|---|---|
+| 1 | 228ms | 9ms | 8888ms | 0.0% | ✅ |
+| 2 | 259ms | 9ms | 9090ms | 0.0% | ✅ |
+| 4 | 624ms | 15ms | 15.5s | 0.0% | ✅ |
+| 5 | 768ms | 15ms | 16.0s | 0.0% | ✅ |
+| 6 | 945ms | 21ms | 22.4s | 0.0% | ❌ |
+| 8 | 822ms | 25ms | 26.6s | 0.0% | ❌ |
 
 ## Methodology
 

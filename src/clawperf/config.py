@@ -11,7 +11,118 @@ from __future__ import annotations
 
 import dataclasses
 import os
+import re
 from typing import Optional
+
+
+# ── Flexible SLO constraints ──────────────────────────────────────────────────
+#
+# Syntax:  <metric>.<agg><op><value_ms>
+#   metric: ttft | tpot | e2e        (case-insensitive)
+#   agg:    avg | min | max | p25 | p50 | p75 | p90 | p95 | p99 | p99.9 | ...
+#   op:     <= | < | >= | >
+#
+# Examples:
+#   ttft.p99<=1500      P99 time-to-first-token at most 1500 ms
+#   tpot.avg<=30        average time-per-output-token at most 30 ms
+#   e2e.max<=30000      worst-case end-to-end latency at most 30 s
+#
+# Multiple constraints AND together. When --slo constraints are given they
+# replace the legacy --slo-ttft-ms/--slo-tpot-ms thresholds (which remain
+# supported and are converted to '<metric>.p{percentile}<={ms}' constraints).
+
+_SLO_SPEC_RE = re.compile(
+    r"^\s*(ttft|tpot|e2e)\.(avg|min|max|p[0-9]+(?:\.[0-9]+)?)\s*(<=|>=|<|>)\s*"
+    r"([0-9]*\.?[0-9]+)\s*(?:ms)?\s*$",
+    re.IGNORECASE,
+)
+
+
+@dataclasses.dataclass(frozen=True)
+class SloConstraint:
+    """One parsed SLO constraint, e.g. ``ttft.p99<=1500`` (milliseconds)."""
+
+    metric: str      # ttft | tpot | e2e
+    agg: str         # avg | min | max | p25 | p50 | p99.9 | ...
+    op: str          # <= | < | >= | >
+    value_ms: float
+
+    @property
+    def label(self) -> str:
+        """Full human-readable form, e.g. ``ttft.p99<=1500ms``."""
+        return f"{self.metric}.{self.agg}{self.op}{self.value_ms:g}ms"
+
+    @property
+    def column(self) -> str:
+        """Short table column header, e.g. ``ttft.p99``."""
+        return f"{self.metric}.{self.agg}"
+
+    @property
+    def _q(self) -> float:
+        """Percentile as a 0..1 fraction (0 for non-percentile aggs)."""
+        if self.agg[:1] in ("p", "P"):
+            return float(self.agg[1:]) / 100.0
+        return 0.0
+
+    def aggregate(self, values: list[float]) -> Optional[float]:
+        """Compute this constraint's aggregate over latency samples (ms).
+
+        Returns None when there are no samples. Percentiles use the same
+        linear-interpolation method as the runner's statistics.
+        """
+        if not values:
+            return None
+        s = sorted(values)
+        n = len(s)
+        a = self.agg.lower()
+        if a == "avg":
+            return sum(s) / n
+        if a == "min":
+            return s[0]
+        if a == "max":
+            return s[-1]
+        # Percentile (linear interpolation — matches runner._percentile).
+        if n == 1:
+            return s[0]
+        pos = self._q * (n - 1)
+        lo = int(pos)
+        hi = min(lo + 1, n - 1)
+        frac = pos - lo
+        return s[lo] * (1 - frac) + s[hi] * frac
+
+    def satisfied_by(self, agg_value: Optional[float]) -> bool:
+        if agg_value is None:
+            return False  # unmeasurable → cannot claim the SLO is met
+        if self.op == "<=":
+            return agg_value <= self.value_ms
+        if self.op == "<":
+            return agg_value < self.value_ms
+        if self.op == ">=":
+            return agg_value >= self.value_ms
+        if self.op == ">":
+            return agg_value > self.value_ms
+        return False
+
+
+def parse_slo_constraint(spec: str) -> SloConstraint:
+    """Parse a constraint spec like ``ttft.p99<=1500`` into a SloConstraint.
+
+    Raises ValueError with a usage hint on malformed input.
+    """
+    m = _SLO_SPEC_RE.match(spec or "")
+    if not m:
+        raise ValueError(
+            f"invalid SLO constraint {spec!r}: expected '<metric>.<agg><op><value_ms>', "
+            "e.g. ttft.p99<=1500, tpot.avg<=30, e2e.max<=30000 "
+            "(metrics: ttft|tpot|e2e; aggs: avg|min|max|p25|p50|p75|p90|p95|p99...; "
+            "ops: <=|<|>=|>)"
+        )
+    return SloConstraint(
+        metric=m.group(1).lower(),
+        agg=m.group(2).lower(),
+        op=m.group(3),
+        value_ms=float(m.group(4)),
+    )
 
 
 @dataclasses.dataclass
@@ -47,6 +158,9 @@ class BenchmarkConfig:
     seed: int = 0                  # reproducibility seed for prompt construction
 
     # ── SLO mode configuration (only with --mode slo) ──
+    # Flexible constraints, e.g. ("ttft.p99<=1500", "tpot.avg<=30", "e2e.max<=30000").
+    # When set they replace the legacy ttft/tpot thresholds below.
+    slo_constraints: tuple = ()
     slo_ttft_ms: Optional[float] = None
     slo_tpot_ms: Optional[float] = None
     slo_percentile: float = 0.99
@@ -139,8 +253,36 @@ class BenchmarkConfig:
         if not self.output:
             from datetime import datetime
             self.output = f"results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        self._normalize_slo_constraints()
         self._parse_arrival_mode()
         self._apply_profile()
+
+    def _normalize_slo_constraints(self):
+        """Accept a comma-separated string (env var) or list (YAML) and validate
+        each spec eagerly — a clear ValueError beats a traceback mid-benchmark."""
+        raw = self.slo_constraints
+        if raw is None or raw == "":
+            self.slo_constraints = ()
+        elif isinstance(raw, str):
+            self.slo_constraints = tuple(s.strip() for s in raw.split(",") if s.strip())
+        elif isinstance(raw, (list, tuple)):
+            self.slo_constraints = tuple(raw)
+        for spec in self.slo_constraints:
+            parse_slo_constraint(spec)
+
+    def effective_slo_constraints(self) -> list:
+        """Resolved constraint list: explicit --slo specs win; otherwise the
+        legacy --slo-ttft-ms/--slo-tpot-ms pair (at --slo-percentile) is
+        converted into equivalent constraints."""
+        if self.slo_constraints:
+            return [parse_slo_constraint(s) for s in self.slo_constraints]
+        cons = []
+        pct = f"p{self.slo_percentile * 100:g}"
+        if self.slo_ttft_ms is not None:
+            cons.append(SloConstraint("ttft", pct, "<=", float(self.slo_ttft_ms)))
+        if self.slo_tpot_ms is not None:
+            cons.append(SloConstraint("tpot", pct, "<=", float(self.slo_tpot_ms)))
+        return cons
 
     def _apply_profile(self):
         """If context_profile is set, override the raw token fields."""
@@ -280,8 +422,12 @@ class BenchmarkConfig:
                     f"prefix_len ({plen}) + boundary ({BOUNDARY_TOKENS})."
                 )
         if self.mode == "slo":
-            if self.slo_ttft_ms is None and self.slo_tpot_ms is None:
-                problems.append("slo: specify at least one of --slo-ttft-ms / --slo-tpot-ms.")
+            if not self.slo_constraints and self.slo_ttft_ms is None and self.slo_tpot_ms is None:
+                problems.append(
+                    "slo: specify at least one constraint via --slo "
+                    "(e.g. ttft.p99<=1500, tpot.avg<=30, e2e.max<=30000) or the "
+                    "legacy --slo-ttft-ms / --slo-tpot-ms."
+                )
             if self.slo_max_users < self.slo_min_users:
                 problems.append("slo: slo_max_users must be >= slo_min_users.")
             if self.slo_step_turns < 1:

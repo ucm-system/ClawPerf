@@ -369,3 +369,60 @@ class TestTraceReport:
         assert "Budget Sweep" in md
         assert "Hit Rate" in md
         assert "Speedup" in md
+
+
+# ── Replay context-window clamping ───────────────────────────────────────────
+
+class TestClampReplayMaxTokens:
+    def _decide(self, **kw):
+        from clawperf.trace_simulator import clamp_replay_max_tokens
+        args = dict(index=0, messages=[], input_length=1000, max_tokens=512,
+                    max_context_tokens=8192, token_counter=None)
+        args.update(kw)
+        return clamp_replay_max_tokens(**args)
+
+    def test_disabled_when_no_window(self):
+        assert self._decide(max_context_tokens=0) == ("none", None, None)
+
+    def test_fits_as_is(self):
+        # 1000 + 512 << 8192*0.9
+        assert self._decide()[0] == "none"
+
+    def test_clamps_to_remaining_window(self):
+        # estimate path: effective window = int(8192*0.9)=7372; room=6372 >= 512 → none.
+        # Tighter: input 7000 → room 372 < 512 → clamp to 372.
+        action, mt, in_tok = self._decide(input_length=7000)
+        assert action == "clamp" and mt == 372 and in_tok == 7000
+
+    def test_clamp_floor_of_16(self):
+        # room = 7372-7360 = 12 → clamped to floor 16
+        action, mt, _ = self._decide(input_length=7360)
+        assert action == "clamp" and mt == 16
+
+    def test_overflow_via_estimate(self):
+        action, mt, in_tok = self._decide(input_length=7500)
+        assert action == "overflow" and mt is None and in_tok == 7500
+
+    def test_exact_counter_fits(self):
+        action, mt, in_tok = self._decide(token_counter=lambda m: 100)
+        assert action == "none" and in_tok == 100
+
+    def test_exact_counter_clamps(self):
+        action, mt, in_tok = self._decide(token_counter=lambda m: 8000, max_tokens=512)
+        assert action == "clamp" and mt == 192 and in_tok == 8000
+
+    def test_exact_counter_overflows(self):
+        action, mt, in_tok = self._decide(token_counter=lambda m: 9000)
+        assert action == "overflow" and in_tok == 9000
+
+    def test_counter_exception_falls_back_to_estimate(self):
+        def boom(messages):
+            raise RuntimeError("no tokenizer")
+        # input_length 7000 → estimate path clamps to 372
+        action, mt, _ = self._decide(token_counter=boom, input_length=7000)
+        assert action == "clamp" and mt == 372
+
+    def test_exact_counter_overrides_estimate(self):
+        # Estimate says tight, exact count says plenty of room.
+        action, mt, in_tok = self._decide(input_length=7000, token_counter=lambda m: 200)
+        assert action == "none" and in_tok == 200

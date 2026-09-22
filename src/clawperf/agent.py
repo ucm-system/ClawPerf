@@ -117,6 +117,10 @@ class AgentTools:
                 except asyncio.TimeoutError:
                     try:
                         proc.kill()
+                        # Reap the process + close pipe transports (otherwise
+                        # Windows ProactorEventLoop leaves unclosed-transport
+                        # warnings behind at interpreter shutdown).
+                        await asyncio.wait_for(proc.communicate(), timeout=5)
                     except Exception:
                         pass
                     return f"error: shell command timed out after {self.shell_timeout}s"

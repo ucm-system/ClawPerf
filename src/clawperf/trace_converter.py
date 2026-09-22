@@ -53,6 +53,33 @@ def text_len(text: str) -> int:
     return max(1, len(text) // 4)
 
 
+def _message_wire_text(m: Dict) -> str:
+    """Everything of one message that goes over the wire: content (text,
+    tool_use/tool_result blocks) plus tool_calls."""
+    parts: List[str] = []
+    c = m.get("content")
+    if isinstance(c, str):
+        parts.append(c)
+    elif c is not None:
+        parts.append(json.dumps(c, ensure_ascii=False))
+    for tc in m.get("tool_calls") or []:
+        if isinstance(tc, dict):
+            parts.append(json.dumps(tc, ensure_ascii=False))
+    return " ".join(parts)
+
+
+def estimate_messages_tokens(msgs: List[Dict], per_message_overhead: int = 4) -> int:
+    """Rough token estimate for a message list (chars/4 + template overhead).
+
+    Counts tool_use / tool_result blocks and tool_calls — the dominant payload
+    in agent sessions — not just visible text, so ``input_length`` reflects
+    what the server actually tokenizes (chat-template markers add a few tokens
+    per message).
+    """
+    total = sum(text_len(_message_wire_text(m)) + per_message_overhead for m in msgs)
+    return max(1, total)
+
+
 # ── Claude Code session → turns ───────────────────────────────────────────────
 
 def extract_claude_turns(lines: Iterable[Dict]) -> List[Dict]:
@@ -144,7 +171,7 @@ def convert_claude_code_file(
 ) -> List[Dict]:
     """Convert one Claude Code session JSONL into ClawPerf trace lines."""
     lines = []
-    with open(path, encoding="utf-8") as f:
+    with open(path, encoding="utf-8-sig") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -160,21 +187,11 @@ def convert_claude_code_file(
     cumulative: List[int] = []
     for request in requests:
         msgs = request["messages"]
-        # Estimate input length from text content.
-        total_tokens = 0
-        for m in msgs:
-            c = m.get("content")
-            if isinstance(c, str):
-                total_tokens += text_len(c)
-            elif isinstance(c, list):
-                for b in c:
-                    if isinstance(b, dict) and b.get("type") == "text":
-                        total_tokens += text_len(b.get("text", ""))
+        # Token estimate over the full wire payload (tool blocks included).
+        total_tokens = estimate_messages_tokens(msgs)
         # Unique cumulative prefix hashes (grows across turns).
         for m in msgs:
-            c = m.get("content")
-            text = c if isinstance(c, str) else json.dumps(c, ensure_ascii=False)
-            for h in block_hashes(text, block_size):
+            for h in block_hashes(_message_wire_text(m), block_size):
                 if h not in cumulative:
                     cumulative.append(h)
         trace_lines.append({
@@ -219,7 +236,7 @@ def load_sharegpt_jsonl(path: str, session_id: int = 0,
         if line is not None:
             out.append(line)
 
-    with open(path, encoding="utf-8") as f:
+    with open(path, encoding="utf-8-sig") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -249,10 +266,9 @@ def load_sharegpt_jsonl(path: str, session_id: int = 0,
 
 def _sharegpt_line(msgs: List[Dict], block_size: int, session_id: int) -> Optional[Dict]:
     cumulative: List[int] = []
-    total_tokens = sum(text_len(m.get("content", "")) for m in msgs)
+    total_tokens = estimate_messages_tokens(msgs)
     for m in msgs:
-        text = m.get("content", "")
-        for h in block_hashes(text, block_size):
+        for h in block_hashes(_message_wire_text(m), block_size):
             if h not in cumulative:
                 cumulative.append(h)
     return {
@@ -268,7 +284,7 @@ def load_openai_style_jsonl(path: str, session_id: int = 0,
                             block_size: int = 64) -> List[Dict]:
     """Load a flat OpenAI-style trace (each line has ``messages``)."""
     out: List[Dict] = []
-    for line in open(path, encoding="utf-8"):
+    for line in open(path, encoding="utf-8-sig"):
         line = line.strip()
         if not line:
             continue
@@ -277,14 +293,11 @@ def load_openai_style_jsonl(path: str, session_id: int = 0,
         if not msgs:
             continue
         cumulative: List[int] = []
-        total_tokens = sum(text_len(m.get("content", "")) for m in msgs
-                           if isinstance(m.get("content"), str))
+        total_tokens = estimate_messages_tokens(msgs)
         for m in msgs:
-            text = m.get("content")
-            if isinstance(text, str):
-                for h in block_hashes(text, block_size):
-                    if h not in cumulative:
-                        cumulative.append(h)
+            for h in block_hashes(_message_wire_text(m), block_size):
+                if h not in cumulative:
+                    cumulative.append(h)
         out.append({
             "block_size": block_size,
             "hash_ids": list(cumulative),
@@ -298,7 +311,7 @@ def load_openai_style_jsonl(path: str, session_id: int = 0,
 def detect_format(path: str) -> str:
     """Return 'claude' | 'openai' | 'unknown' for a trace file."""
     try:
-        with open(path, encoding="utf-8") as f:
+        with open(path, encoding="utf-8-sig") as f:
             first = None
             for line in f:
                 line = line.strip()

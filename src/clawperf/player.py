@@ -57,9 +57,12 @@ class ReplayResult:
 
 
 def load_recording(path: str) -> List[Dict]:
-    """Load a JSONL recording into a list of entry dicts."""
+    """Load a JSONL recording into a list of entry dicts.
+
+    utf-8-sig so recordings saved by Windows tools (UTF-8 BOM) load cleanly.
+    """
     entries = []
-    with open(path, encoding="utf-8") as f:
+    with open(path, encoding="utf-8-sig") as f:
         for line in f:
             line = line.strip()
             if not line:

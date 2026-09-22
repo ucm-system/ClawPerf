@@ -73,3 +73,6 @@ comparison.md
 clawperf_history.jsonl
 record_server.log
 .zcode/
+
+# Local E2E harness scripts/logs (server bring-up, record client, probes)
+ops_e2e/

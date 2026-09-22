@@ -95,11 +95,24 @@ class RecordingProxy:
         self._index = 0
         self._lock = asyncio.Lock()
         self._entries: List[RecordedEntry] = []
-        # Open the recording file in append mode.
+        # Open the recording file in append mode (sessions can be resumed),
+        # but tell the user when they're appending so sessions don't silently mix.
         import os
         out_dir = os.path.dirname(recording_path)
         if out_dir and not os.path.exists(out_dir):
             os.makedirs(out_dir, exist_ok=True)
+        prior_entries = 0
+        if os.path.exists(recording_path) and os.path.getsize(recording_path) > 0:
+            try:
+                with open(recording_path, encoding="utf-8-sig") as f:
+                    prior_entries = sum(1 for line in f if line.strip())
+            except OSError:
+                prior_entries = 0
+        if prior_entries:
+            print(f"[ClawPerf] Appending to existing recording {recording_path!r} "
+                  f"({prior_entries} prior entries will be kept). "
+                  "Delete the file first to start a fresh recording.",
+                  flush=True)
         self._file = open(recording_path, "a", encoding="utf-8")
 
     async def _get_client(self):

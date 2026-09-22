@@ -3,52 +3,52 @@
 | Field | Value |
 |-------|-------|
 | Model | `qwen3` |
-| Endpoint | `http://110.138.0.3:8123/v1` |
+| Endpoint | `http://110.138.0.3:9155/v1` |
 | Backend | vllm |
 | Mode | `scenario` |
 | Users | 4 |
 | Max Turns | 10 |
 | Context | sys=4000 + usr=1500 + in=1500 tokens |
-| Setup Time | 3.50s |
-| Bench Time | 36.77s |
+| Setup Time | 3.20s |
+| Bench Time | 36.05s |
 
 ## Verdict: ✅ GOOD
 
-- **TTFT (P50):** 291ms — instant (GOOD)
-- **Decode throughput:** 71.9 tok/s — smooth (GOOD)
+- **TTFT (P50):** 214ms — instant (GOOD)
+- **Decode throughput:** 72.9 tok/s — smooth (GOOD)
 
 ## Key Findings
 
-- Per-user decode throughput ranges 69.7–71.9 tok/s
+- Per-user decode throughput ranges 71.1–72.9 tok/s
 - Concurrency efficiency: 26% (max_thru / (min_thru × N))
-- P50 TTFT: 291ms — instant
+- P50 TTFT: 214ms — instant
 
 ## Summary
 
 | User | In Tok | Out Tok | TTFT P50 | TPOT P50 | E2E P50 | tok/s | Comp | Succ | Fail |
 |------|--------|---------|----------|----------|---------|-------|------|------|------|
-| 0 | 145,686 | 2,560 | 291ms | 12.67ms | 3556ms | 71.9 | 0 | 10 | 0 |
-| 1 | 148,411 | 2,560 | 313ms | 12.98ms | 3763ms | 70.2 | 0 | 10 | 0 |
-| 2 | 149,370 | 2,560 | 335ms | 12.84ms | 3730ms | 69.8 | 0 | 10 | 0 |
-| 3 | 149,456 | 2,560 | 375ms | 12.58ms | 3717ms | 69.7 | 0 | 10 | 0 |
+| 0 | 149,610 | 2,560 | 214ms | 12.55ms | 3404ms | 72.9 | 0 | 10 | 0 |
+| 1 | 149,610 | 2,560 | 299ms | 12.57ms | 3517ms | 71.1 | 0 | 10 | 0 |
+| 2 | 149,610 | 2,560 | 359ms | 12.51ms | 3519ms | 71.1 | 0 | 10 | 0 |
+| 3 | 149,602 | 2,560 | 251ms | 12.80ms | 3493ms | 71.8 | 0 | 10 | 0 |
 
 ## TTFT Scaling (P50)
 
 ```
-   1 user(s) | ███████████████████████░░░░░░░ 291ms
-   2 user(s) | █████████████████████████░░░░░ 313ms
-   3 user(s) | ██████████████████████████░░░░ 335ms
-   4 user(s) | ██████████████████████████████ 375ms
+   1 user(s) | █████████████████░░░░░░░░░░░░░ 214ms
+   2 user(s) | █████████████████████████░░░░░ 299ms
+   3 user(s) | ██████████████████████████████ 359ms
+   4 user(s) | ████████████████████░░░░░░░░░░ 251ms
 ```
 
 ## Concurrency Scaling
 
 | Users | Total tok/s | Per-user tok/s | Efficiency |
 |-------|------------|----------------|------------|
-| 1 | 71.9 | 71.9 | 100% |
-| 2 | 140.5 | 70.2 | 98% |
-| 3 | 209.3 | 69.8 | 97% |
-| 4 | 278.9 | 69.7 | 97% |
+| 1 | 72.9 | 72.9 | 100% |
+| 2 | 142.3 | 71.1 | 98% |
+| 3 | 213.3 | 71.1 | 97% |
+| 4 | 287.3 | 71.8 | 98% |
 
 ## Methodology
 

@@ -3,24 +3,24 @@
 | Field | Value |
 |-------|-------|
 | Model | `qwen3` |
-| Endpoint | `http://110.138.0.3:8123/v1` |
+| Endpoint | `http://110.138.0.3:9155/v1` |
 | Backend | vllm |
 | Mode | `hitrate` |
 | Input Len | 4096 |
 | Prefix Len | 2048 |
 | Concurrency | 4 |
-| Setup Time | 13.42s |
-| Bench Time | 4.88s |
+| Setup Time | 10.09s |
+| Bench Time | 5.19s |
 
 ## Verdict: ✅ GOOD
 
-- **TTFT (P50):** 158ms — instant (GOOD)
+- **TTFT (P50):** 214ms — instant (GOOD)
 - **Measured hit rate:** 49.90% (target: 50.00%)
 
 ## Key Findings
 
 - Target hit rate: 50.0%  |  Measured: 49.9%
-- P50 TTFT: 158ms — instant
+- P50 TTFT: 214ms — instant
 
 ## Summary
 
@@ -31,9 +31,9 @@
 | Errors | 0 |
 | Target Hit Rate | 50.0% |
 | Measured Hit Rate | 49.90%
-| ttft P50 | 158ms |
-| e2e_latency P50 | 457ms |
-| tpot P50 | 0ms |
+| ttft P50 | 214ms |
+| e2e_latency P50 | 482ms |
+| tpot P50 | 9ms |
 
 ## Methodology
 

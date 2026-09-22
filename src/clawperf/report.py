@@ -482,15 +482,35 @@ def _md_summary_table(result: Dict) -> str:
                 lines.append(f"| {key} P50 | {_fmt_ms(pct.get('P50'))} |")
     elif mode == "slo":
         steps = result.get("capacity_curve", [])
-        lines.append("| Users | P99 TTFT | P99 TPOT | Error | SLO |")
-        lines.append("|-------|----------|----------|-------|-----|")
-        for step in steps:
-            tpot_s = f"{step['p_tpot_ms']:.2f}ms" if step.get('p_tpot_ms') else "N/A"
-            lines.append(
-                f"| {step['n_users']} | {_fmt_ms(step.get('p_ttft_ms'))} | "
-                f"{tpot_s} | {step.get('error_rate', 0)*100:.1f}% | "
-                f"{'✅' if step.get('slo_met') else '❌'} |"
-            )
+        summary = result.get("summary", {})
+        # New-style results carry per-constraint values; fall back to the
+        # legacy P{percentile} TTFT/TPOT columns for old result files.
+        cons = summary.get("slo_constraints") or []
+        has_values = bool(steps) and all(
+            isinstance(s.get("constraint_values"), dict) for s in steps
+        )
+        if cons and has_values:
+            headers = ["Users"] + [f"{c['metric']}.{c['agg']}" for c in cons] + ["Error", "SLO"]
+            lines.append("| " + " | ".join(headers) + " |")
+            lines.append("|" + "|".join(["---"] * (len(headers))) + "|")
+            for step in steps:
+                cells = [str(step["n_users"])]
+                for c in cons:
+                    v = (step.get("constraint_values") or {}).get(c["label"])
+                    cells.append(_fmt_ms(v))
+                cells.append(f"{step.get('error_rate', 0)*100:.1f}%")
+                cells.append("✅" if step.get("slo_met") else "❌")
+                lines.append("| " + " | ".join(cells) + " |")
+        else:
+            lines.append("| Users | P99 TTFT | P99 TPOT | Error | SLO |")
+            lines.append("|-------|----------|----------|-------|-----|")
+            for step in steps:
+                tpot_s = f"{step['p_tpot_ms']:.2f}ms" if step.get('p_tpot_ms') else "N/A"
+                lines.append(
+                    f"| {step['n_users']} | {_fmt_ms(step.get('p_ttft_ms'))} | "
+                    f"{tpot_s} | {step.get('error_rate', 0)*100:.1f}% | "
+                    f"{'✅' if step.get('slo_met') else '❌'} |"
+                )
     elif mode == "agent":
         tasks = result.get("tasks", [])
         lines.append("| Task | Steps | Finished | Wall(s) | In Tok | Out Tok |")
@@ -758,6 +778,6 @@ def generate_comparison(result_a: Dict, result_b: Dict, label_a: str = "A",
 
 
 def load_result(path: str) -> Dict:
-    """Load a ClawPerf result JSON file."""
-    with open(path, encoding="utf-8") as f:
+    """Load a ClawPerf result JSON file (BOM-tolerant for Windows-shared files)."""
+    with open(path, encoding="utf-8-sig") as f:
         return json.load(f)

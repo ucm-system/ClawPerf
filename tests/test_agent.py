@@ -98,8 +98,13 @@ async def test_agent_tool_unknown(tmp_path):
 
 @pytest.mark.asyncio
 async def test_agent_tool_shell_timeout(tmp_path):
+    # Cross-platform sleeper: `sleep` doesn't exist on Windows shells.
+    import sys
+
+    sleeper = tmp_path / "sleeper.py"
+    sleeper.write_text("import time\ntime.sleep(10)\n", encoding="utf-8")
     tools = AgentTools(str(tmp_path), shell_timeout=1)
-    out = await tools.run("run_shell", {"command": "sleep 10"})
+    out = await tools.run("run_shell", {"command": f"{sys.executable} {sleeper}"})
     assert "timed out" in out
 
 

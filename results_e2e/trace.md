@@ -3,54 +3,54 @@
 | Field | Value |
 |-------|-------|
 | Model | `qwen3` |
-| Endpoint | `http://110.138.0.3:8123/v1` |
+| Endpoint | `http://110.138.0.3:9155/v1` |
 | Backend | vllm |
 | Mode | `trace` |
 | Requests | 34 |
-| Total Tokens | 20,861 |
-| Unique Blocks | 46 |
+| Total Tokens | 338,995 |
+| Unique Blocks | 523 |
 | Policy | lru |
 | Setup Time | 0.00s |
-| Bench Time | 133.52s |
+| Bench Time | 113.30s |
 
 ## Verdict: ✅ GOOD
 
-- **Real replay TTFT (P50):** 110ms — instant (GOOD)
-- **Real replay decode:** 115.1 tok/s
+- **Real replay TTFT (P50):** 111ms — instant (GOOD)
+- **Real replay decode:** 101.3 tok/s
 
 ## Key Findings
 
-- KV cache hit rate: 82.79%  (ceiling: 82.79%)
-- Ideal prefill speedup: 5.81x  (= 1 / (1 - 82.79%))
-- Real replay: TTFT P50 110ms, decode 115.1 tok/s
+- KV cache hit rate: 90.42%  (ceiling: 90.42%)
+- Ideal prefill speedup: 10.44x  (= 1 / (1 - 90.42%))
+- Real replay: TTFT P50 111ms, decode 101.3 tok/s
 
 ## Summary
 
 | Metric | Value |
 |--------|-------|
 | Requests | 34 |
-| Total Input Tokens | 20,861 |
-| Unique Blocks | 46 |
-| Hit Rate | 82.79% |
-| Ceiling | 82.79% |
-| Speedup | 5.81x |
-| Hit Tokens | 1,737 |
-| Miss Tokens | 361 |
+| Total Input Tokens | 338,995 |
+| Unique Blocks | 523 |
+| Hit Rate | 90.42% |
+| Ceiling | 90.42% |
+| Speedup | 10.44x |
+| Hit Tokens | 276,346 |
+| Miss Tokens | 29,281 |
 
 ### Real Replay (measured)
 
 | Metric | Value |
 |--------|-------|
-| Requests | 34 ok / 34 total |
-| Total Input Tokens | 458,832 |
-| Total Output Tokens | 18,018 |
-| TTFT P50 | 109.71 ms |
-| TTFT P95 | 279.72 ms |
-| TTFT P99 | 280.97 ms |
-| E2E P50 | 3521.93 ms |
-| Decode tok/s | 115.12 tok/s |
-| ITL P50 | 8.61 ms |
-| ITL P95 | 16.31 ms |
+| Requests | 29 ok / 34 total |
+| Total Input Tokens | 261,897 |
+| Total Output Tokens | 14,159 |
+| TTFT P50 | 110.98 ms |
+| TTFT P95 | 186.62 ms |
+| TTFT P99 | 195.54 ms |
+| E2E P50 | 3584.75 ms |
+| Decode tok/s | 101.29 tok/s |
+| ITL P50 | 9.96 ms |
+| ITL P95 | 13.91 ms |
 
 ## Methodology
 

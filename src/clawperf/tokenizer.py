@@ -49,7 +49,10 @@ class TokenizerManager:
                 logger.info("Loaded tokenizer from HuggingFace: %s", self.tokenizer_path)
             except Exception as e:
                 raise RuntimeError(
-                    f"Failed to load tokenizer from '{self.tokenizer_path}'. Error: {e}"
+                    f"Failed to load tokenizer from '{self.tokenizer_path}'. "
+                    "Pass --tokenizer <local-dir-or-model-id> (e.g. a downloaded "
+                    "tokenizer folder) if the endpoint's model name isn't resolvable. "
+                    f"Error: {e}"
                 )
         if self._tokenizer.pad_token is None:
             self._tokenizer.pad_token = self._tokenizer.eos_token

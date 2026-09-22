@@ -3,29 +3,29 @@
 | Field | Value |
 |-------|-------|
 | Model | `qwen3` |
-| Endpoint | `http://110.138.0.3:8123/v1` |
+| Endpoint | `http://110.138.0.3:9155/v1` |
 | Backend | vllm |
 | Mode | `scenario` |
 | Users | 1 |
 | Max Turns | 10 |
 | Context | sys=4000 + usr=1500 + in=1500 tokens |
-| Setup Time | 8.02s |
-| Bench Time | 22.88s |
+| Setup Time | 6.72s |
+| Bench Time | 24.36s |
 
 ## Verdict: ✅ GOOD
 
-- **TTFT (P50):** 195ms — instant (GOOD)
-- **Decode throughput:** 112.1 tok/s — smooth (GOOD)
+- **TTFT (P50):** 200ms — instant (GOOD)
+- **Decode throughput:** 105.2 tok/s — smooth (GOOD)
 
 ## Key Findings
 
-- P50 TTFT: 195ms — instant
+- P50 TTFT: 200ms — instant
 
 ## Summary
 
 | User | In Tok | Out Tok | TTFT P50 | TPOT P50 | E2E P50 | tok/s | Comp | Succ | Fail |
 |------|--------|---------|----------|----------|---------|-------|------|------|------|
-| 0 | 144,243 | 2,560 | 195ms | 8.08ms | 2271ms | 112.1 | 0 | 10 | 0 |
+| 0 | 147,324 | 2,560 | 200ms | 8.68ms | 2408ms | 105.2 | 0 | 10 | 0 |
 
 ## Methodology
 

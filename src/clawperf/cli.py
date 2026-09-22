@@ -53,7 +53,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Pre-configured suite: quick, standard, full, hitrate. "
                         "Runs multiple (users × profile) scenarios in sequence.")
     g.add_argument("--model-context-length", type=int, default=0,
-                   help="Model's max context window. Suite profiles exceeding this are skipped (0=no limit).")
+                   help="Model's max context window. Suite profiles exceeding this are "
+                        "skipped, and trace-replay max_tokens is clamped so requests "
+                        "fit the window (0=no limit).")
 
     # ── Hit-rate mode configuration ──
     g = parser.add_argument_group("Hit-Rate Mode (only with --mode hitrate)")
@@ -69,9 +71,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ── SLO mode configuration ──
     g = parser.add_argument_group("SLO Mode (only with --mode slo)")
-    g.add_argument("--slo-ttft-ms", type=float, default=None)
-    g.add_argument("--slo-tpot-ms", type=float, default=None)
-    g.add_argument("--slo-percentile", type=float, default=0.99)
+    g.add_argument("--slo", action="append", dest="slo_constraints", default=None,
+                   metavar="SPEC",
+                   help="Flexible SLO constraint, repeatable: '<metric>.<agg><op><ms>', "
+                        "e.g. ttft.p99<=1500, tpot.avg<=30, e2e.max<=30000. "
+                        "Metrics: ttft|tpot|e2e; aggregates: avg|min|max|p25|p50|p75|p90|"
+                        "p95|p99(…); operators: <=|<|>=|>. All constraints AND together. "
+                        "When given, replaces the legacy --slo-ttft-ms/--slo-tpot-ms.")
+    g.add_argument("--slo-ttft-ms", type=float, default=None,
+                   help="Legacy: TTFT threshold at --slo-percentile (prefer --slo ttft.p99<=X).")
+    g.add_argument("--slo-tpot-ms", type=float, default=None,
+                   help="Legacy: TPOT threshold at --slo-percentile (prefer --slo tpot.p99<=X).")
+    g.add_argument("--slo-percentile", type=float, default=0.99,
+                   help="Percentile for the legacy --slo-ttft-ms/--slo-tpot-ms thresholds "
+                        "(ignored when --slo constraints are given).")
     g.add_argument("--slo-error-rate", type=float, default=None)
     g.add_argument("--slo-min-users", type=int, default=1)
     g.add_argument("--slo-max-users", type=int, default=100)
@@ -321,7 +334,15 @@ def _run_trace_convert(args: argparse.Namespace):
     for inp in args.inputs:
         fmt = detect_format(inp)
         print(f"  {inp}: detected {fmt}")
-    lines = convert_many(args.inputs, block_size=args.block_size, max_requests=args.max_turns)
+    try:
+        lines = convert_many(args.inputs, block_size=args.block_size,
+                             max_requests=args.max_turns)
+    except ValueError as e:
+        # Unsupported format / unreadable file — clean message, no traceback.
+        print(f"[ClawPerf] {e}", file=sys.stderr)
+        print("Supported formats: Claude Code session JSONL, ShareGPT "
+              "({conversations: [...]}), OpenAI messages JSONL.", file=sys.stderr)
+        sys.exit(EXIT_CONFIG_ERROR)
     if not lines:
         print("[ClawPerf] No replayable requests found in the input files.", file=sys.stderr)
         sys.exit(EXIT_CONFIG_ERROR)
@@ -350,7 +371,25 @@ _SUBCOMMANDS = {
 }
 
 
+def _force_utf8_stdio() -> None:
+    """Reconfigure stdout/stderr to UTF-8 (errors=replace).
+
+    Windows consoles frequently default to a legacy code page (e.g. GBK/cp936)
+    that cannot encode the Unicode characters ClawPerf prints (``✓ ✗ ✅ ↔ ─``).
+    Without this, ``clawperf --help`` and the final summary crash with
+    ``UnicodeEncodeError`` before the user sees anything.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            enc = (getattr(stream, "encoding", "") or "").lower().replace("-", "")
+            if enc and enc not in ("utf8", "utf8mb4"):
+                stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+        except Exception:
+            pass  # non-tty / exotic stream — leave as-is
+
+
 def main():
+    _force_utf8_stdio()
     # Check for subcommands first (report, compare, trace-convert).
     if len(sys.argv) > 1 and sys.argv[1] in _SUBCOMMANDS:
         subcmd = sys.argv[1]
@@ -365,7 +404,14 @@ def main():
         sys.exit(EXIT_OK)
 
     # Flat parser: --mode X --endpoint ... (backward compatible).
-    config = parse_args()
+    try:
+        config = parse_args()
+    except ValueError as e:
+        # Layered-config construction errors (bad --user-arrival spec, malformed
+        # --slo constraint, invalid YAML value, ...) — a clean message + exit 1
+        # beats a traceback for CI users.
+        print(f"[ClawPerf] configuration error: {e}", file=sys.stderr)
+        sys.exit(EXIT_CONFIG_ERROR)
 
     from clawperf.logging_setup import setup_logging
 
@@ -589,6 +635,8 @@ def main():
                         concurrency=config.concurrency,
                         active_users=config.trace_users,
                         max_tokens=config.output_tokens_per_turn,
+                        max_context_tokens=config.model_context_length,
+                        tokenizer_path=config.tokenizer,
                     )
                     return results, bench_s
 

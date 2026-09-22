@@ -476,6 +476,10 @@ class BenchmarkRunner:
             "wall_end_ts": round(wall_end - self._bench_start_time, 3),
         }
         if bd.success:
+            # EvalScope only derives TPOT/ITL inside BenchmarkData.finalize(),
+            # which its multi-turn runner invokes — the raw AioHttpClient.post()
+            # path used here leaves them at 0.0. finalize() is idempotent.
+            bd.finalize(self._api_plugin)
             rec["ttft_ms"] = bd.first_chunk_latency * 1000 if bd.first_chunk_latency is not None else None
             rec["e2e_latency_ms"] = bd.query_latency * 1000 if bd.query_latency is not None else None
             rec["tpot_ms"] = bd.time_per_output_token * 1000 if bd.time_per_output_token is not None else None
@@ -587,26 +591,28 @@ class BenchmarkRunner:
         await self._finalize_slo(steps, max_users, bench_time_s, setup_time)
 
     def _slo_label(self) -> str:
-        parts = []
-        if self.config.slo_ttft_ms is not None:
-            parts.append(f"TTFT P{int(self.config.slo_percentile*100)}<={self.config.slo_ttft_ms}ms")
-        if self.config.slo_tpot_ms is not None:
-            parts.append(f"TPOT P{int(self.config.slo_percentile*100)}<={self.config.slo_tpot_ms}ms")
+        parts = [c.label for c in self.config.effective_slo_constraints()]
         if self.config.slo_error_rate is not None:
             parts.append(f"err<={self.config.slo_error_rate*100:.1f}%")
         return ", ".join(parts) or "(no SLO)"
 
-    def _slo_verdict(self, p_ttft, p_tpot, err_rate, timed_out) -> bool:
-        """Pure SLO check: does this step's metrics satisfy the configured SLO?"""
-        if timed_out:
-            return False
-        if self.config.slo_ttft_ms is not None and (p_ttft is None or p_ttft > self.config.slo_ttft_ms):
-            return False
-        if self.config.slo_tpot_ms is not None and (p_tpot is None or p_tpot > self.config.slo_tpot_ms):
-            return False
+    def _slo_verdict(self, metric_lists: Dict[str, List[float]], err_rate: float,
+                     timed_out: bool) -> Dict:
+        """Evaluate every configured SLO constraint against one step's samples.
+
+        ``metric_lists`` maps metric name (ttft/tpot/e2e) → list of latency
+        samples in ms. Returns {"met": bool, "values": {label: aggregate}} —
+        a constraint whose metric has no samples counts as NOT met.
+        """
+        constraints = self.config.effective_slo_constraints()
+        values = {
+            c.label: c.aggregate(metric_lists.get(c.metric, []))
+            for c in constraints
+        }
+        met = (not timed_out) and all(c.satisfied_by(values[c.label]) for c in constraints)
         if self.config.slo_error_rate is not None and err_rate > self.config.slo_error_rate:
-            return False
-        return True
+            met = False
+        return {"met": met, "values": values}
 
     def _next_n(self, n: int) -> int:
         if self.config.slo_step_strategy == "geometric":
@@ -688,27 +694,31 @@ class BenchmarkRunner:
         # Stats over measured (non-warmup) turns.
         measured = [r for r in records if not r.get("is_warmup")]
         success = [r for r in measured if r.get("success")]
-        ttft_vals = [r["ttft_ms"] for r in success if r.get("ttft_ms") is not None]
-        tpot_vals = [r["tpot_ms"] for r in success if r.get("tpot_ms") is not None]
+        metric_lists = {
+            "ttft": [r["ttft_ms"] for r in success if r.get("ttft_ms") is not None],
+            "tpot": [r["tpot_ms"] for r in success if r.get("tpot_ms") is not None],
+            "e2e": [r["e2e_latency_ms"] for r in success if r.get("e2e_latency_ms") is not None],
+        }
         p = self.config.slo_percentile
-        p_ttft = _percentile(ttft_vals, p) if ttft_vals else None
-        p_tpot = _percentile(tpot_vals, p) if tpot_vals else None
+        p_ttft = _percentile(metric_lists["ttft"], p) if metric_lists["ttft"] else None
+        p_tpot = _percentile(metric_lists["tpot"], p) if metric_lists["tpot"] else None
         err_rate = (len(measured) - len(success)) / len(measured) if measured else 1.0
 
-        slo_met = self._slo_verdict(p_ttft, p_tpot, err_rate, timed_out)
+        verdict = self._slo_verdict(metric_lists, err_rate, timed_out)
+        slo_met = verdict["met"]
 
-        verdict = "OK" if slo_met else ("TIMEOUT" if timed_out else "FAIL")
-        logger.info(
-            "  N=%d: P%d TTFT=%s TPOT=%s err=%.1f%% -> %s",
-            n_users, int(p * 100),
-            f"{p_ttft:.1f}ms" if p_ttft is not None else "N/A",
-            f"{p_tpot:.2f}ms" if p_tpot is not None else "N/A",
-            err_rate * 100, verdict,
-        )
+        label = "OK" if slo_met else ("TIMEOUT" if timed_out else "FAIL")
+        detail = ", ".join(
+            f"{lbl}={v:.1f}ms" if v is not None else f"{lbl}=N/A"
+            for lbl, v in verdict["values"].items()
+        ) or "no constraints"
+        logger.info("  N=%d: %s, err=%.1f%% -> %s", n_users, detail, err_rate * 100, label)
         return {
             "n_users": n_users,
             "p_ttft_ms": p_ttft,
             "p_tpot_ms": p_tpot,
+            "metrics": {k: _percentiles(v) for k, v in metric_lists.items() if v},
+            "constraint_values": verdict["values"],
             "error_rate": err_rate,
             "success_count": len(success),
             "total_count": len(measured),
@@ -721,9 +731,15 @@ class BenchmarkRunner:
         if self._http_client:
             await self._http_client.client.close()
 
+        constraints = self.config.effective_slo_constraints()
         summary = {
             "mode": "slo",
             "slo": self._slo_label(),
+            "slo_constraints": [
+                {"metric": c.metric, "agg": c.agg, "op": c.op,
+                 "value_ms": c.value_ms, "label": c.label}
+                for c in constraints
+            ],
             "slo_ttft_ms": self.config.slo_ttft_ms,
             "slo_tpot_ms": self.config.slo_tpot_ms,
             "slo_percentile": self.config.slo_percentile,
@@ -751,19 +767,20 @@ class BenchmarkRunner:
         print("\n" + "=" * 70, flush=True)
         print("ClawPerf - SLO Capacity Sweep Complete", flush=True)
         print("=" * 70, flush=True)
-        pct_label = f"P{int(self.config.slo_percentile * 100)}"
         t = PrettyTable()
-        t.field_names = ["Users", f"{pct_label} TTFT", f"{pct_label} TPOT", "Error", "Succ", "SLO"]
+        t.field_names = ["Users"] + [c.column for c in constraints] + ["Error", "Succ", "SLO"]
         t.align = "r"
         t.align["SLO"] = "c"
         for s in steps:
-            ttft = f"{s['p_ttft_ms']:.1f}ms" if s["p_ttft_ms"] is not None else "N/A"
-            tpot = f"{s['p_tpot_ms']:.2f}ms" if s["p_tpot_ms"] is not None else "N/A"
-            t.add_row([
-                s["n_users"], ttft, tpot,
+            row = [s["n_users"]]
+            for c in constraints:
+                v = (s.get("constraint_values") or {}).get(c.label)
+                row.append(f"{v:.1f}ms" if v is not None else "N/A")
+            row += [
                 f"{s['error_rate']*100:.1f}%", str(s["success_count"]),
                 "✓" if s["slo_met"] else "✗",
-            ])
+            ]
+            t.add_row(row)
         print("\n  Capacity Curve", flush=True)
         print(t)
         print(f"\n  SLO: {self._slo_label()}", flush=True)

@@ -1,9 +1,10 @@
 # ClawPerf 端到端测试报告 (E2E Test Report)
 
-**日期**: 2026-08-27
-**被测服务**: vLLM-Ascend `quay.io/ascend/vllm-ascend:v0.23.0rc1` @ `110.138.0.3:8123`
-**模型**: `Qwen3-0.6B-131072`（served as `qwen3`，yarn rope-scaling factor 3.2，`max_model_len=131072`，NPU 2 单卡，tool-calling 开启 `--tool-call-parser qwen3_xml`）
-**客户端**: ClawPerf 0.6.0（本机 Windows，Python 3.11）
+**日期**: 2026-09-22
+**被测服务**: vLLM-Ascend `quay.io/ascend/vllm-ascend:v0.23.0` @ `110.138.0.3:9155`
+**模型**: `Qwen3-0.6B`（served as `qwen3`，`max_model_len=32768`，NPU 6 / 910B3 单卡，tool-calling 开启 `--enable-auto-tool-choice --tool-call-parser qwen3_xml`）
+**客户端**: ClawPerf（本仓库源码，含本轮修复）@ Windows / Python 3.11
+**单元回归**: `pytest` — **269 passed, 0 failed**（本轮新增 SLO 约束与上下文裁剪共 35 个用例）
 
 > 原始结果 JSON/Markdown 见 `results_e2e/`（gitignored，本报告为归档摘要）。
 
@@ -13,116 +14,174 @@
 
 | # | 模式 | 命令要点 | 结果 | 关键指标 |
 |---|------|----------|------|----------|
-| 1 | **scenario** | `--context-profile fresh --num-users 2 --max-turns 4` | ✅ 8/8 成功 | 前缀命中率 **73.95%**，输出吞吐 228.6 tok/s |
-| 2 | **hitrate** | `--hit-rate 0.5 --num-requests 40 --prefix-num 2 --concurrency 4` | ✅ 40/40 | **TARGET 50.00% vs MEASURED 49.90%** |
-| 3 | **slo** | `--slo-ttft-ms 1500 --slo-min-users 1 --slo-max-users 8` | ✅ 8 步全过 | 容量曲线 1→8 用户（见 §2） |
-| 4 | **agent** | `--agent-tasks 2 --agent-task-file examples/agent_task_tooltest.jsonl` | ✅ 2/2 任务完成 | 工具调用路径验证，前缀命中率 **42.76%** |
-| 5 | **trace** | 真实 ModelScope trace 34 请求 `--trace-users 3 --budget-sweep` | ✅ 34/34 | ceiling **82.79%**，TTFT P50 109.7ms，decode 115.1 tok/s |
-| 6 | **suite** | `--suite quick`（3 场景：1/4/8 users × fresh） | ✅ 130/130 | 1u: 10/10，4u: 40/40，8u: 80/80 |
-| 7 | **replay** | `--recording examples/agentic_trace_real.jsonl --history-mode live` | ✅ 11/11 | TTFT P50 69.9ms，decode 114.1 tok/s |
-| 8 | **record** | `--mode record` CLI 代理 + HTTP 客户端 | ✅ 200 + 33 SSE | 录制 JSONL 完整（request_body + chunks） |
-| 9 | **report** | `clawperf report results_e2e/scenario.json` | ✅ | 生成 Markdown 报告（结论 + 图表） |
-| 10 | **compare** | `clawperf compare hitrate.json trace.json` | ✅ | 生成对比报告 |
+| 1 | **scenario** | `--context-profile fresh --num-users 2 --max-turns 4` | ✅ 8/8 成功 | 前缀命中率 **71.27%**（Prometheus 实测），decode 108.3 tok/s，TTFT P50 231ms |
+| 2 | **hitrate** | `--hit-rate 0.5 --num-requests 40 --prefix-num 2 --concurrency 4 --reset-cache` | ✅ 40/40 | **TARGET 50.00% vs MEASURED 49.90%**；TPOT 9.18ms（本轮修复前恒为 0） |
+| 3 | **slo**（新约束语法） | `--slo ttft.p99<=1500 --slo tpot.avg<=30 --slo e2e.max<=20000` | ✅ 6 步全跑 | 容量曲线见 §2，**Max sustained users: 5**（绑定约束为 e2e.max） |
+| 4 | **agent** | `--agent-tasks 2 --agent-task-file examples/agent_task_tooltest.jsonl` | ✅ 2/2 任务完成 | 10 步真实 function-calling，前缀命中率 **84.20%** |
+| 5 | **trace** | ModelScope 真实 trace 34 请求 `--trace-users 3 --budget-sweep --model-context-length 32768` | ✅ 29/29 已发送全成功 | ceiling **90.42%**，TTFT P50 111ms；5 请求因输入 ≥ 32K 窗口被明确跳过（见 §3） |
+| 6 | **suite** | `--suite quick`（1/4/8 users × fresh） | ✅ 130/130 | TTFT P50: 1u 203ms → 4u 290ms → 8u 379ms |
+| 7 | **replay** | `--recording examples/agentic_trace_real.jsonl`，live 与 verbatim 各一遍 | ✅ 11/11 ×2 | live: TTFT P50 59.0ms / decode 107.8 tok/s |
+| 8 | **record** | 录制代理 @9090，2 个 OpenAI 流式 + 2 个 Anthropic 流式请求 | ✅ 4/4 全 200 | Anthropic→OpenAI 实时互译验证通过；录制 JSONL 含 request_body + chunks |
+| 9 | **record→replay 闭环** | 回放本次录制的 JSONL | ✅ 5/5 | TTFT P50 49.3ms |
+| 10 | **report / compare** | `clawperf report scenario.json`、`compare hitrate.json trace.json` | ✅ | Markdown 报告 + 对比报告（含 ASCII 图） |
+| 11 | **mock-server** | 本地 `clawperf-mock-server`，hitrate + scenario | ✅ 30/30、6/6 | hitrate **TARGET 50.00% vs MEASURED 49.21%**（字典树块粒度），scenario 命中率 72.23% |
+| 12 | **trace-convert** | Claude Code ×3 + ShareGPT + OpenAI messages（含带 BOM 文件） | ✅ | 三种格式均转换成功；BOM 文件可读；不支持的格式报清晰错误并 exit 1 |
 
-## 2. SLO 容量曲线（P99 TTFT ≤ 1500ms）
+## 2. SLO 容量曲线（灵活约束：ttft.p99 / tpot.avg / e2e.max）
 
-| 并发用户 | P99 TTFT | P99 TPOT | 错误率 | SLO |
-|---------|----------|----------|--------|-----|
-| 1 | 207ms | 8.2ms | 0.0% | ✅ |
-| 2 | 318ms | 9.2ms | 0.0% | ✅ |
-| 4 | 515ms | 15.2ms | 0.0% | ✅ |
-| 8 | 743ms | 26.6ms | 0.0% | ✅ |
+| 并发用户 | ttft.p99 | tpot.avg | e2e.max | 错误率 | SLO |
+|---------|----------|----------|---------|--------|-----|
+| 1 | 228.2ms | 8.6ms | 8,887.7ms | 0.0% | ✅ |
+| 2 | 259.3ms | 8.8ms | 9,089.6ms | 0.0% | ✅ |
+| 4 | 624.2ms | 14.7ms | 15,471.1ms | 0.0% | ✅ |
+| 5 | 768.4ms | 15.1ms | 15,980.6ms | 0.0% | ✅ |
+| 6 | 945.1ms | 20.9ms | 22,360.6ms | 0.0% | ❌ |
+| 8 | 822.4ms | 25.5ms | 26,554.0ms | 0.0% | ❌ |
 
-**Max sustained users: 8**（扫描上限内全部满足，P99 TTFT 增长接近线性）
+**Max sustained users: 5**。绑定约束是 `e2e.max<=20000ms`——正是混合约束才能暴露的洞察（TTFT/TPOT 在 8 用户时仍达标）。
 
-## 3. 真实 Trace 回放（ModelScope 数据集）
+## 3. 真实 Trace 回放与上下文裁剪
 
-来源：`Glint-Research/Fable-5-traces`（Claude Code 会话）+ `armand0e/kimi-k2.6-claude-code-traces`（2 个会话），经
-`clawperf trace-convert` 转为 ClawPerf flat trace（34 请求 / 3 会话 / 累积前缀）。
+来源：`Glint-Research/Fable-5-traces` + `armand0e/kimi-k2.6-claude-code-traces`（3 会话 / 34 请求，`trace-convert` 转换）。
 
 | 指标 | 值 |
 |------|-----|
-| 回放成功率 | **34/34** |
-| TTFT P50 / P95 | 109.7ms / 776ms |
-| Decode | 115.1 tok/s |
-| 模拟 ceiling（无限预算） | **82.79%** |
-| 模拟 speedup（= 1/(1−r)） | 5.81× |
+| 已发送回放成功率 | **29/29** |
+| 被跳过（输入 ≥ 32K 窗口） | 5（明确报错并说明原因，不再发送必然 400 的请求） |
+| 模拟 ceiling（无限预算） | **90.42%**（本轮修复 trace 转换计入 tool 块后，从 82.79% 上修） |
+| 模拟 speedup（= 1/(1−r)） | 10.4× |
 
-结论：真实 Agent 会话表现出极高的前缀复用性（82.79%），显著高于合成负载（scenario ~74%）。
+本轮发现并修复的两个关键问题：
 
-## 4. 端到端验证覆盖的能力清单
+1. **trace 转换的 token 估算漏计 tool 内容** —— 旧实现对 `tool_use`/`tool_result` 块视而不见，而 Claude Code 会话里这些才是主要载荷（文件内容、shell 输出）。`input_length` 低估 ~40%（1,688 vs 实际 ~31.8K）。修复后按完整 wire 内容（含 tool_calls JSON）估算。
+2. **上下文裁剪闭环** —— `--model-context-length 32768` + `--tokenizer` 时：精确分词 → 剩余空间裁剪 `max_tokens`；仅输入即超窗的请求直接跳过并给出可行动的错误信息。此前这些请求会收到 vLLM 的误导性 400（其报错中的 "input tokens" 数值实为 `window+1−max_tokens` 反推值，并非真实长度——本轮用 `max_tokens=1` 探测证实）。
 
-- ✅ 全部 7 种运行模式 + 3 个子命令在真实 vLLM-Ascend 端点上工作
-- ✅ 131072 长上下文（模型窗口确认）+ 40K batch 参数
-- ✅ 前缀缓存命中率闭环：hitrate 目标/实测对比、scenario/slo/agent 实测 Prometheus 指标
-- ✅ 工具调用（agent 模式真实 function-calling）
-- ✅ 录制→回放闭环（record CLI 代理 → JSONL → replay live-history）
-- ✅ 外部 trace 数据集转换 → 真实回放
-- ✅ Markdown 报告与对比报告生成
+## 4. 本轮发现并修复的缺陷
 
-## 5. 回归
+| # | 缺陷 | 影响 | 修复 |
+|---|------|------|------|
+| 1 | **Windows GBK 控制台崩溃**：`clawperf --help`/摘要输出含 `↔ ✓ ✅ █`，GBK 代码页下 `UnicodeEncodeError` 直接崩溃 | 中文 Windows 用户完全不可用 | CLI 入口强制 UTF-8 stdio（`errors=replace`） |
+| 2 | **hitrate 模式 TPOT 恒为 0**：evalscope 仅在其 multi-turn 路径调用 `BenchmarkData.finalize()`，hitrate 直连 `AioHttpClient.post()` 拿到的是默认值 | hitrate 报告缺一列关键指标 | 成功记录统一补调 `bd.finalize()`（幂等） |
+| 3 | **trace 转换 token 低估**（见 §3） | 预算扫描/GB 换算/裁剪全部失真 | 按 wire 内容估算（tool 块 + tool_calls + 每消息开销） |
+| 4 | **trace 回放超窗报错不可读** | 5/34 请求收到误导性 400 | 精确裁剪 + 溢出跳过 + 明确错误文案 |
+| 5 | **trace-convert 遇不支持的格式抛裸 traceback** | CI 里不友好 | 捕获 ValueError → 干净报错 + 格式提示 + exit 1 |
+| 6 | **agent shell 超时杀进程不回收**：Windows ProactorEventLoop 下留下 unclosed-transport 告警 | 告警噪音 / 资源泄漏 | kill 后 `communicate()` 收尸并关闭管道 |
+| 7 | **测试不可移植**：`sleep 10` 在 Windows 不存在 | Windows 上 1 个用例必挂 | 改用 `sys.executable` 跑跨平台 sleeper |
+| 8 | **配置错误抛 traceback**（如非法 `--user-arrival`、坏 SLO 约束） | 违背"exit 1 = 配置错误"的 CI 契约 | `main()` 捕获 ValueError → `[ClawPerf] configuration error: ...` + exit 1 |
+| 9 | **录制代理静默追加**旧录制文件 | 多次会话悄悄混在一个文件里 | 追加时打印已有条数并提示如何重开 |
+| 10 | **JSONL 读取不兼容 BOM**（Windows 工具导出的文件） | `detected unknown` 误报 | 所有外部文件读取改 `utf-8-sig` |
+| 11 | **tokenizer 加载失败提示不含解法** | 用户不知可传 `--tokenizer` | 错误信息加入 `--tokenizer <path>` 提示 |
 
-- **单元测试: 234 passed**（含报告内容断言、配置分层、trace 转换/模拟/回放、agent、系统指标等 18 个测试文件）
-- **ruff: 全部通过**
+## 5. 新增功能
 
-## 6. 复现命令
+1. **灵活 SLO 约束**（本次主要需求）：`--slo ttft.p99<=1500 --slo tpot.avg<=30 --slo e2e.max<=30000`，可重复、任意组合；旧 `--slo-ttft-ms/--slo-tpot-ms/--slo-percentile` 自动等价转换；容量曲线表/Markdown 报告/JSON 摘要均按约束动态出列；旧结果文件 `clawperf report` 仍按旧列渲染（向后兼容）。
+2. **`--model-context-length` 作用于 trace 回放**：精确分词（提供 `--tokenizer` 时）→ 逐请求裁剪 `max_tokens` → 溢出请求跳过并归类为 `context overflow`。
+
+## 6. 可服务性 / 易用性评估（后续建议）
+
+**已验证良好**：
+- CI 契约（exit 0/1/2）实测成立；配置错误信息可行动。
+- 单一 NPU 上与其他用户容器共存无干扰（只占 davinci6）。
+- mock-server 让无 GPU 环境可跑通 scenario/hitrate/slo/replay 的完整闭环，命中率目标端到端可验证（50% 目标 → 49.21% 实测，差异来自模拟器的块粒度）。
+- record 代理同时讲 OpenAI 与 Anthropic 两种协议，Claude Code 可直接指向。
+
+**建议改进（按优先级）**：
+1. **ruff 版本债**：仓库按 ruff<0.15 水平写的，ruff 0.15 报 175 个存量违规（123 个 E501）。建议 pin `ruff>=0.15` 并一次性 `--fix` + 手工收尾，恢复 "lint 全绿"。
+2. **trace 回放的估算兜底**：无 tokenizer 时 chars/4 对 tool 密集内容仍低估 ~11%；可考虑在 `--model-context-length` 生效但 tokenizer 不可用时打 WARNING（当前已有）并在文档强调配 `--tokenizer`。
+3. **metrics-endpoint 自动推导**：`--metrics-endpoint` 未配置时静默跳过命中率采集；可默认尝试 `<endpoint>/../metrics`，失败再降级并提示。
+4. **结果体积**：8 用户 × 10 轮的 JSON 达 7.6MB（含逐轮明细）；可加 `--no-detail` 开关只留摘要（CI 产物更轻）。
+5. **evalscope 版本面**：`finalize()` 契约在 1.8.0 验证通过；依赖声明 `>=1.5.0`，建议收窄到实测版本区间并在 CI 矩阵里跑最低/最高版本。
+6. **Windows 复现命令**：PowerShell 下带引号的 curl/json 参数会被拆分；报告统一给 `python -m clawperf` 形式（本报告同）。
+
+## 7. 复现命令
 
 ```bash
-# 环境
-export NO_PROXY="*"   # 绕过本机代理（否则 lab 端点 502）
+# 环境（Windows 客户端）
+export NO_PROXY="*"   # 绕过本机代理（否则内网端点 502）
+
+# 服务端（910B3 单卡）
+docker run -d --name clawperf-e2e --net=host --shm-size=50g \
+  -e ASCEND_RT_VISIBLE_DEVICES=0 --device /dev/davinci6 \
+  --device /dev/davinci_manager --device /dev/devmm_svm --device /dev/hisi_hdc \
+  -v /usr/local/dcmi:/usr/local/dcmi \
+  -v /usr/local/Ascend/driver/tools/hccn_tool:/usr/local/Ascend/driver/tools/hccn_tool \
+  -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
+  -v /usr/local/Ascend/driver/lib64/:/usr/local/Ascend/driver/lib64/ \
+  -v /usr/local/Ascend/driver/version.info:/usr/local/Ascend/driver/version.info \
+  -v /etc/ascend_install.info:/etc/ascend_install.info \
+  -v /root/.cache:/root/.cache -v /mnt/model:/mnt/model:ro \
+  quay.io/ascend/vllm-ascend:v0.23.0 \
+  vllm serve /mnt/model/Qwen3-0.6B --served-model-name qwen3 \
+  --tensor-parallel-size 1 --max-model-len 32768 --max-num-batched-tokens 32768 \
+  --port 9155 --gpu-memory-utilization 0.85 \
+  --enable-auto-tool-choice --tool-call-parser qwen3_xml
+
+EP=http://110.138.0.3:9155/v1
+M=http://110.138.0.3:9155/metrics
+TOK=tokenizers/qwen3-0.6b
 
 # scenario
-clawperf --mode scenario --endpoint http://110.138.0.3:8123/v1 --model qwen3 \
-  --tokenizer tokenizers/qwen3-0.6b --context-profile fresh --num-users 2 \
-  --max-turns 4 --max-context-tokens 30000 \
-  --metrics-endpoint http://110.138.0.3:8123/metrics --output results_e2e/scenario.json
+clawperf --mode scenario --endpoint $EP --model qwen3 --tokenizer $TOK \
+  --context-profile fresh --num-users 2 --max-turns 4 --max-context-tokens 30000 \
+  --metrics-endpoint $M --output results_e2e/scenario.json
 
 # hitrate
-clawperf --mode hitrate --endpoint http://110.138.0.3:8123/v1 --model qwen3 \
-  --tokenizer tokenizers/qwen3-0.6b --num-requests 40 --input-len 4096 \
-  --hit-rate 0.5 --prefix-num 2 --output-len 32 --concurrency 4 \
-  --metrics-endpoint http://110.138.0.3:8123/metrics --output results_e2e/hitrate.json
+clawperf --mode hitrate --endpoint $EP --model qwen3 --tokenizer $TOK \
+  --num-requests 40 --input-len 4096 --hit-rate 0.5 --prefix-num 2 \
+  --output-len 32 --concurrency 4 --metrics-endpoint $M --reset-cache \
+  --output results_e2e/hitrate.json
 
-# slo
-clawperf --mode slo --endpoint http://110.138.0.3:8123/v1 --model qwen3 \
-  --tokenizer tokenizers/qwen3-0.6b --context-profile short --max-context-tokens 30000 \
-  --slo-ttft-ms 1500 --slo-min-users 1 --slo-max-users 8 \
-  --slo-step-turns 3 --output results_e2e/slo.json
+# slo（灵活约束）
+clawperf --mode slo --endpoint $EP --model qwen3 --tokenizer $TOK \
+  --context-profile short --max-context-tokens 30000 \
+  --slo ttft.p99<=1500 --slo tpot.avg<=30 --slo e2e.max<=20000 \
+  --slo-min-users 1 --slo-max-users 8 --slo-step-turns 3 --output results_e2e/slo.json
 
-# agent（需要模型文件包含固定任务）
-clawperf --mode agent --endpoint http://110.138.0.3:8123/v1 --model qwen3 \
+# agent
+clawperf --mode agent --endpoint $EP --model qwen3 \
   --agent-tasks 2 --agent-task-file examples/agent_task_tooltest.jsonl \
   --agent-max-steps 8 --agent-max-tokens 256 \
-  --metrics-endpoint http://110.138.0.3:8123/metrics --output results_e2e/agent.json
+  --metrics-endpoint $M --output results_e2e/agent.json
 
-# trace（真实数据集回放）
-clawperf trace-convert examples/ms_traces/fable_sample.jsonl examples/ms_traces/kimi_sample_1.jsonl \
-  examples/ms_traces/kimi_sample_2.jsonl --output examples/ms_traces/real_ms_traces.jsonl
+# trace（真实数据集回放 + 上下文裁剪）
+clawperf trace-convert examples/ms_traces/fable_sample.jsonl \
+  examples/ms_traces/kimi_sample_1.jsonl examples/ms_traces/kimi_sample_2.jsonl \
+  --output examples/ms_traces/real_ms_traces.jsonl
 clawperf --mode trace --trace-file examples/ms_traces/real_ms_traces.jsonl \
-  --endpoint http://110.138.0.3:8123/v1 --model qwen3 \
-  --trace-users 3 --budget-sweep --output results_e2e/trace.json
+  --endpoint $EP --model qwen3 --tokenizer $TOK --trace-users 3 --budget-sweep \
+  --model-context-length 32768 --output results_e2e/trace.json
 
 # suite
-clawperf --mode scenario --suite quick --endpoint http://110.138.0.3:8123/v1 \
-  --model qwen3 --tokenizer tokenizers/qwen3-0.6b --max-context-tokens 30000 \
-  --output results_e2e/suite.json
+clawperf --mode scenario --suite quick --endpoint $EP --model qwen3 \
+  --tokenizer $TOK --max-context-tokens 30000 --output results_e2e/suite.json
 
-# replay
-clawperf --mode replay --endpoint http://110.138.0.3:8123/v1 --model qwen3 \
+# replay（live / verbatim）
+clawperf --mode replay --endpoint $EP --model qwen3 \
   --recording examples/agentic_trace_real.jsonl --history-mode live \
   --output results_e2e/replay.json
 
-# record（终端 1 起代理，终端 2 发请求）
-clawperf --mode record --upstream-endpoint http://110.138.0.3:8123 \
-  --proxy-port 9092 --recording examples/e2e_record_test.jsonl
+# record（终端 1 起代理；终端 2 用任意 OpenAI/Anthropic 客户端发请求）
+clawperf --mode record --upstream-endpoint http://110.138.0.3:9155 \
+  --proxy-port 9090 --recording results_e2e/e2e_record_test.jsonl
 
 # report / compare
 clawperf report results_e2e/scenario.json
-clawperf compare results_e2e/hitrate.json results_e2e/trace.json
+clawperf compare results_e2e/hitrate.json results_e2e/trace.json \
+  --label-a hitrate --label-b trace-replay
+
+# mock-server（无 GPU 闭环）
+clawperf-mock-server --port 9100
+clawperf --mode hitrate --endpoint http://127.0.0.1:9100/v1 --model mock \
+  --tokenizer $TOK --num-requests 30 --input-len 2048 --hit-rate 0.5 \
+  --prefix-num 2 --output-len 16 --concurrency 3 \
+  --metrics-endpoint http://127.0.0.1:9100/metrics --backend vllm \
+  --reset-cache --output results_e2e/mock_hitrate.json
 ```
 
-## 7. 测试环境与注意事项
+## 8. 测试环境与注意事项
 
-- **本机代理**: Windows 系统代理（127.0.0.1:7892）会劫持非公网请求导致 502，所有请求需 `NO_PROXY=*` 或客户端 `trust_env=False`（ClawPerf 内部已默认关闭 trust_env）。
-- **vLLM 配置**: tool-calling 需要 `--enable-auto-tool-choice --tool-call-parser qwen3_xml`（此版本无 `qwen3` 解析器名）。
-- **前缀缓存 reset**: vllm-ascend 0.23 无 `/reset_prefix_cache` 端点（404 提示后继续，delta 计算仍隔离窗口）。
+- **本机代理**: Windows 系统代理会劫持内网请求导致 502，客户端需 `NO_PROXY=*`（ClawPerf 内部 HTTP 已默认 `trust_env=False`，此处为 curl 等外部工具兜底）。
+- **vLLM 配置**: tool-calling 需 `--enable-auto-tool-choice --tool-call-parser qwen3_xml`（此版本无 `qwen3`/`hermes` 之外的 Qwen3 解析器名）。
+- **前缀缓存 reset**: vllm-ascend 0.23.0 无 `/reset_prefix_cache` 端点（404 警告后继续，delta 计算仍隔离窗口）。
+- **模型窗口**: 本轮 `Qwen3-0.6B` 为 32K 窗口（上轮 E2E 用的是 131072 yarn 版本）；长会话尾部请求（输入 ~39.5K tokens）物理上放不进 32K，属预期跳过而非缺陷。
+- **NPU 资源**: 服务器 8 卡中仅占用空闲的 davinci6；测试结束即 `docker rm -f clawperf-e2e`。

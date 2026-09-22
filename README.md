@@ -18,7 +18,7 @@ Built on [EvalScope](https://github.com/modelscope/evalscope)'s perf infrastruct
 |------|--------------|
 | `scenario` (default) | Multi-turn long-context workload: N users maintain independent growing conversations (system prefix + user prefix + history + current input), with append-mode compaction. The core agentic-load simulator. |
 | `hitrate` | Controlled prefix-cache hit-rate test: prompts with a known `[shared prefix][boundary][unique suffix]` split, prefill, then **target vs measured** hit rate from the server's Prometheus counters. |
-| `slo` | SLO-driven capacity sweep: ramps concurrency geometrically, then binary-refines the **max users** meeting P{percentile} TTFT/TPOT targets. |
+| `slo` | SLO-driven capacity sweep: ramps concurrency geometrically, then binary-refines the **max users** meeting your targets — any mix of `ttft`/`tpot`/`e2e` × `avg`/`P50`/`P90`/`P99`/`max` constraints. |
 | `agent` | Real coding agent at work: the model actually calls tools (read/write files, run shell) via OpenAI function-calling across growing context. |
 | `trace` | KV-cache hit-rate analysis + real replay from a trace file: simulates a block-level prefix cache (LRU/FIFO eviction, budget sweep) and, when the trace carries messages, replays real requests against the endpoint. |
 | `record` | Recording proxy: sits between a real agent (Claude Code, etc.) and the LLM endpoint, captures every request/response round-trip as JSONL. |
@@ -55,6 +55,10 @@ git clone https://github.com/ucm-system/ClawPerf.git
 cd ClawPerf
 pip install -e ".[dev]"
 ```
+
+Notes:
+- **Windows**: works out of the box — ClawPerf forces UTF-8 console I/O so help text and reports (✓/✅/█) never crash on GBK code pages, and JSONL readers accept UTF-8 BOM files.
+- **No GPU / CI**: `clawperf-mock-server` provides a full fake endpoint (trie prefix cache + `/metrics`) — every mode except `agent`/`trace`-replay runs against it; hit-rate targets are verified end-to-end (see the E2E report).
 
 ## Quick Start
 
@@ -96,16 +100,33 @@ The summary prints **TARGET vs MEASURED** hit rate (measured from `vllm:prefix_c
 
 ### slo — max concurrency under SLO
 
+Constraints are freely composable: any latency metric (`ttft` / `tpot` / `e2e`) × any aggregate (`avg`, `min`, `max`, `p25`, `p50`, `p75`, `p90`, `p95`, `p99`, `p99.9`, …) × any operator (`<=`, `<`, `>=`, `>`), in milliseconds. Repeat `--slo` to combine — all constraints AND together:
+
 ```bash
 clawperf --mode slo \
   --endpoint http://localhost:8000/v1 --model qwen2.5-72b \
-  --slo-ttft-ms 500 --slo-tpot-ms 30 \   # P99 must be ≤ these
+  --slo ttft.p99<=500 --slo tpot.avg<=30 --slo e2e.max<=30000 \
   --slo-min-users 1 --slo-max-users 200 \
   --slo-step-strategy geometric \
   --output results_slo.json
 ```
 
-Output: a capacity curve (users vs P99 TTFT/TPOT/error/SLO-met) and the max sustained users.
+Legacy shorthand is still supported (and converted to `ttft.p99<=X` style internally):
+
+```bash
+clawperf --mode slo ... --slo-ttft-ms 500 --slo-tpot-ms 30 --slo-percentile 0.99
+```
+
+Output: a capacity curve (one column per constraint, users × values × SLO verdict) and the max sustained users. Example against a real vLLM-Ascend endpoint:
+
+```
+| Users | ttft.p99 | tpot.avg |   e2e.max | Error | SLO |
+|     1 |  228.2ms |    8.6ms |  8887.7ms |  0.0% |  ✓  |
+|     4 |  624.2ms |   14.7ms | 15471.1ms |  0.0% |  ✓  |
+|     6 |  945.1ms |   20.9ms | 22360.6ms |  0.0% |  ✗  |
+SLO: ttft.p99<=1500ms, tpot.avg<=30ms, e2e.max<=20000ms
+Max sustained users: 5
+```
 
 ### agent — real coding agent
 
@@ -129,16 +150,23 @@ Custom tasks via `--agent-task-file` (one `{"prompt", "workspace": {"path":"cont
 clawperf --mode trace --trace-file trace.jsonl --budget-sweep
 
 # Trace with messages → also replays real requests against the endpoint.
+# --model-context-length clamps each request's max_tokens to the remaining
+# window (exact tokenization when --tokenizer is given) and skips requests
+# whose input alone exceeds the window with a clear error.
 clawperf --mode trace \
   --trace-file trace.jsonl \
   --endpoint http://localhost:8000/v1 --model qwen3 \
+  --model-context-length 32768 \
   --trace-users 3                    # session-aware concurrency
 ```
 
 ### record & replay — capture a real agent session, then replay it
 
 ```bash
-# Terminal 1: start the recording proxy (agents point their base URLs here)
+# Terminal 1: start the recording proxy (agents point their base URLs here).
+# Accepts OpenAI (/v1/chat/completions) AND Anthropic (/v1/messages) clients,
+# translating Anthropic→OpenAI on the fly. The recording JSONL is appended
+# across restarts (you'll be told how many prior entries are kept).
 clawperf --mode record --upstream-endpoint http://localhost:8000 \
   --proxy-port 9090 --recording session.jsonl
 
@@ -226,11 +254,11 @@ backend: vllm
 | All | `--endpoint --model --api-key --request-timeout --output --verbose --config` |
 | scenario | `--num-users --user-arrival --context-profile` or raw `--system-prefix-tokens/--user-prefix-tokens/--input-tokens-per-turn`, `--max-turns --max-context-tokens --compaction-prefix-increment --suite --max-consecutive-failures` |
 | hitrate | `--num-requests --input-len --output-len --hit-rate` or `--prefix-len`, `--prefix-num --prefill/--no-prefill --seed` |
-| slo | `--slo-ttft-ms/--slo-tpot-ms --slo-percentile --slo-error-rate --slo-min-users --slo-max-users --slo-step-*` |
+| slo | `--slo <metric>.<agg><op><ms>` (repeatable; ttft/tpot/e2e × avg/min/max/p25…p99.9), or legacy `--slo-ttft-ms/--slo-tpot-ms --slo-percentile`; `--slo-error-rate --slo-min-users --slo-max-users --slo-step-*` |
 | agent | `--agent-tasks --agent-task-file --agent-max-steps --agent-max-tokens --agent-shell-timeout --agent-workdir` |
 | record | `--upstream-endpoint --proxy-port --recording --upstream-api` |
 | replay | `--recording --history-mode live\|verbatim` |
-| trace | `--trace-file --cache-budget-tokens/--cache-budget-gb --eviction-policy --trace-block-size --budget-sweep --trace-users --kv-bytes-per-token` |
+| trace | `--trace-file --cache-budget-tokens/--cache-budget-gb --eviction-policy --trace-block-size --budget-sweep --trace-users --kv-bytes-per-token --model-context-length` |
 | Shared concurrency | `--concurrency` (request-level: hitrate/replay/trace); `--trace-users` (session-level: trace) |
 | Metrics | `--metrics-endpoint --metrics-interval --metrics-samples --reset-cache --backend` |
 

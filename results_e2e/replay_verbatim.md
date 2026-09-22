@@ -5,28 +5,12 @@
 | Model | `qwen3` |
 | Endpoint | `http://110.138.0.3:9155/v1` |
 | Backend | vllm |
-| Mode | `agent` |
-| Tasks | 2 |
-| Max Steps | 8 |
-| Setup Time | 0.08s |
-| Bench Time | 16.05s |
+| Mode | `replay` |
+| Setup Time | 0.00s |
+| Bench Time | 78.24s |
 
-## Verdict: ✅ GOOD
+## Verdict: ❌ POOR
 
-- **TTFT (P50):** 90ms — instant (GOOD)
-- **Task completion:** 100%
-
-## Key Findings
-
-- Task completion rate: 100% (2/2)
-- P50 TTFT: 90ms — instant
-
-## Summary
-
-| Task | Steps | Finished | Wall(s) | In Tok | Out Tok |
-|------|-------|----------|---------|--------|---------|
-| 0 | 8 | yes | 16.00 | 9,663 | 1,497 |
-| 1 | 2 | yes | 4.87 | 1,130 | 479 |
 
 ## Methodology
 
