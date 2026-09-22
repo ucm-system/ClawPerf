@@ -88,7 +88,6 @@ jobs:
       - name: Test suite (release gate)
         env:
           NO_PROXY: "*"
-          no_proxy: "*"
         run: python -m pytest -q
 
   # ── 2. Python distributions ──────────────────────────────────────────────────

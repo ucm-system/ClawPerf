@@ -32,6 +32,15 @@ jobs:
       - name: Ruff
         run: ruff check src/ tests/
 
+      - name: Lint the workflow files (actionlint)
+        # Catches the failure modes GitHub only reports as an instant
+        # "workflow file issue" at run time — e.g. env keys that differ only
+        # in case are duplicates to Actions, though YAML treats them as
+        # distinct.
+        run: |
+          python -m pip install actionlint-py
+          actionlint -color
+
   test:
     name: Tests (${{ matrix.os }} · py${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
@@ -61,9 +70,9 @@ jobs:
       - name: Run the test suite
         # ClawPerf's HTTP clients disable trust_env, but the environment is
         # cleared anyway so no corporate/system proxy can hijack localhost.
+        # (env keys are case-insensitive in Actions: define NO_PROXY once.)
         env:
           NO_PROXY: "*"
-          no_proxy: "*"
         run: python -m pytest -q
 
   package:
