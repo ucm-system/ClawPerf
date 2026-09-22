@@ -443,9 +443,27 @@ class BenchmarkRunner:
         await asyncio.gather(*[_one(p) for p in prefill_msgs])
 
     async def _measure_requests(self, requests) -> List[Dict]:
-        """Fire all measure-phase requests (concurrency-limited) and record metrics."""
+        """Fire all measure-phase requests (pacing per --request-rate) and record metrics.
+
+        Closed-loop (default, ``--request-rate 0``): ``--concurrency``
+        in-flight requests; the next request starts as soon as one finishes.
+
+        Open-loop (``--request-rate R``): requests are released on a Poisson
+        process at R req/s with NO in-flight cap (benchmark_serving
+        semantics); the concurrency semaphore is ignored. Each record carries
+        ``rate_skew_ms`` = actual release time - scheduled slot.
+        """
         sem = asyncio.Semaphore(self.config.concurrency)
         records: List[Dict] = []
+        limiter = None
+        if self.config.request_rate > 0:
+            from clawperf.scheduler import PoissonRateLimiter
+            limiter = PoissonRateLimiter(self.config.request_rate, seed=self.config.seed)
+            logger.info(
+                "Open-loop measure phase: %.4g req/s (Poisson, seed=%d) — "
+                "concurrency cap ignored",
+                self.config.request_rate, self.config.seed,
+            )
 
         if not self.config.verbose:
             self._pbar = tqdm(
@@ -454,7 +472,13 @@ class BenchmarkRunner:
             )
 
         async def _one(r):
-            async with sem:
+            skew = None
+            if limiter is not None:
+                slot = await limiter.acquire()
+                skew = (time.monotonic() - slot) * 1000
+            else:
+                await sem.acquire()
+            try:
                 wall_start = time.monotonic()
                 body = self._api_plugin.build_request(
                     [{"role": "user", "content": r.measure_prompt}]
@@ -465,8 +489,13 @@ class BenchmarkRunner:
                     bd = await self._http_client.post(body)
                     wall_end = time.monotonic()
                     rec = self._build_hitrate_record(r, bd, wall_start, wall_end)
+                if skew is not None:
+                    rec["rate_skew_ms"] = round(skew, 3)
                 records.append(rec)
                 self._advance_progress(rec)
+            finally:
+                if limiter is None:
+                    sem.release()
 
         await asyncio.gather(*[_one(r) for r in requests])
         if self._pbar:
@@ -830,6 +859,20 @@ class BenchmarkRunner:
             vals = [r[src] for r in success if r.get(src) is not None]
             if vals:
                 summary[key] = _percentiles(vals)
+        # Open-loop pacing stats (only when --request-rate was set).
+        if self.config.request_rate > 0:
+            starts = [r["wall_start_ts"] for r in self._hitrate_records if r.get("wall_start_ts") is not None]
+            ends = [r["wall_end_ts"] for r in self._hitrate_records if r.get("wall_end_ts") is not None]
+            span = (max(ends) - min(starts)) if starts and ends else 0.0
+            summary["request_rate_target"] = self.config.request_rate
+            if span > 0:
+                summary["request_rate_achieved"] = round(len(self._hitrate_records) / span, 3)
+            skew = [r["rate_skew_ms"] for r in self._hitrate_records if r.get("rate_skew_ms") is not None]
+            if skew:
+                summary["rate_skew_ms"] = {
+                    "avg": round(sum(skew) / len(skew), 3),
+                    "max": round(max(skew), 3),
+                }
         if self._prefix_cache_delta:
             summary["prefix_cache"] = self._prefix_cache_delta
 
@@ -876,7 +919,15 @@ class BenchmarkRunner:
         ct.add_row(["Prefix Length", f"{summary['prefix_len']} tokens"])
         ct.add_row(["Distinct Prefixes", str(self.config.prefix_num)])
         ct.add_row(["Output Length", f"{self.config.output_len} tokens"])
-        ct.add_row(["Concurrency", str(self.config.concurrency)])
+        if self.config.request_rate > 0:
+            ct.add_row(["Request Rate (target)", f"{self.config.request_rate:g} req/s (open-loop)"])
+            if summary.get("request_rate_achieved") is not None:
+                ct.add_row(["Request Rate (achieved)", f"{summary['request_rate_achieved']:g} req/s"])
+            sk = summary.get("rate_skew_ms")
+            if sk:
+                ct.add_row(["Release Skew avg/max", f"{sk['avg']:.1f} / {sk['max']:.1f} ms"])
+        else:
+            ct.add_row(["Concurrency", str(self.config.concurrency)])
         ct.add_row(["Total Input Tokens", f"{total_in:,}"])
         ct.add_row(["Total Output Tokens", f"{total_out:,}"])
         ct.add_row(["Output Token Throughput", f"{total_out / bench_time_s:.2f} tok/s" if bench_time_s > 0 else "N/A"])
@@ -1545,9 +1596,15 @@ class BenchmarkRunner:
             summary["prefix_cache_token_hit_rate"] = self._prefix_cache_delta.get("prefix_cache_token_hit_rate")
             summary["prefix_cache_hit_tokens_delta"] = self._prefix_cache_delta["prefix_cache_hit_tokens_delta"]
             summary["prefix_cache_query_tokens_delta"] = self._prefix_cache_delta["prefix_cache_query_tokens_delta"]
-            summary["external_prefix_cache_token_hit_rate"] = self._prefix_cache_delta.get("external_prefix_cache_token_hit_rate")
-            summary["external_prefix_cache_hit_tokens_delta"] = self._prefix_cache_delta["external_prefix_cache_hit_tokens_delta"]
-            summary["external_prefix_cache_query_tokens_delta"] = self._prefix_cache_delta["external_prefix_cache_query_tokens_delta"]
+            summary["external_prefix_cache_token_hit_rate"] = (
+                self._prefix_cache_delta.get("external_prefix_cache_token_hit_rate")
+            )
+            summary["external_prefix_cache_hit_tokens_delta"] = (
+                self._prefix_cache_delta["external_prefix_cache_hit_tokens_delta"]
+            )
+            summary["external_prefix_cache_query_tokens_delta"] = (
+                self._prefix_cache_delta["external_prefix_cache_query_tokens_delta"]
+            )
             # Per-engine breakdown (incl. per-instance rows for multi-endpoint
             # setups) — parity with hitrate mode's persisted summary.
             if self._prefix_cache_delta.get("prefix_cache_engines"):
@@ -1666,10 +1723,19 @@ class BenchmarkRunner:
         ct.add_row(["Success Requests", str(len(success_turns))])
         ct.add_row(["Failed Requests", str(len(error_turns))])
         ct.add_row(["Total Input Tokens", f"{total_in_tok:,}"])
-        ct.add_row(["Prefill Token Throughput", f"{total_in_tok / bench_time_s:.2f} tok/s" if bench_time_s > 0 else "N/A"])
+        ct.add_row([
+            "Prefill Token Throughput",
+            f"{total_in_tok / bench_time_s:.2f} tok/s" if bench_time_s > 0 else "N/A",
+        ])
         ct.add_row(["Total Output Tokens", f"{total_out_tok:,}"])
-        ct.add_row(["Request Throughput", f"{len(success_turns) / bench_time_s:.4f} req/s" if bench_time_s > 0 else "N/A"])
-        ct.add_row(["Output Token Throughput", f"{total_out_tok / bench_time_s:.2f} tok/s" if bench_time_s > 0 else "N/A"])
+        ct.add_row([
+            "Request Throughput",
+            f"{len(success_turns) / bench_time_s:.4f} req/s" if bench_time_s > 0 else "N/A",
+        ])
+        ct.add_row([
+            "Output Token Throughput",
+            f"{total_out_tok / bench_time_s:.2f} tok/s" if bench_time_s > 0 else "N/A",
+        ])
         # Decode-only throughput: total output tokens / sum of per-request decode
         # times (e2e - ttft). Isolates generation speed from prefill/TTFT.
         # (Borrowed from llmperf's incremental_throughput.)
@@ -1683,7 +1749,10 @@ class BenchmarkRunner:
             "Decode Throughput (excl prefill)",
             f"{total_out_tok / decode_time_s:.2f} tok/s" if decode_time_s > 0 else "N/A",
         ])
-        ct.add_row(["Total Token Throughput", f"{(total_in_tok + total_out_tok) / bench_time_s:.2f} tok/s" if bench_time_s > 0 else "N/A"])
+        ct.add_row([
+            "Total Token Throughput",
+            f"{(total_in_tok + total_out_tok) / bench_time_s:.2f} tok/s" if bench_time_s > 0 else "N/A",
+        ])
         ct.add_row(["Total Compactions", str(total_comp)])
         if self._prefix_cache_delta:
             # Always show the hit-rate row so it's not lost when only tokens print.
@@ -1913,6 +1982,9 @@ class BenchmarkRunner:
               f"out={self.config.output_tokens_per_turn}", flush=True)
         print(f"  Max Context:  {self.config.max_context_tokens} tokens", flush=True)
         print(f"  Ignore EOS:   {self.config.ignore_eos}", flush=True)
+        if self.config.request_rate > 0:
+            print(f"  Rate:         {self.config.request_rate:g} req/s "
+                  "(open-loop, Poisson — concurrency cap ignored)", flush=True)
         print(f"  Tokenizer:    {self.config.tokenizer}", flush=True)
         if not self.config.metrics_endpoint:
             print("  Metrics:      NOT configured — prefix cache data will not be collected", flush=True)

@@ -54,6 +54,7 @@ class ReplayResult:
     generated_text: str = ""
     error: Optional[str] = None
     status_code: Optional[int] = None
+    rate_skew_ms: Optional[float] = None  # open-loop: actual release - scheduled slot
 
 
 def load_recording(path: str) -> List[Dict]:
@@ -186,7 +187,8 @@ class ReplayPlayer:
     def __init__(self, endpoint: str, model: str, api_key: str = "",
                  timeout: int = 600, concurrency: int = 1,
                  history_mode: str = "live", active_users: int = 1,
-                 default_max_tokens: int = 1024):
+                 default_max_tokens: int = 1024,
+                 request_rate: float = 0.0, rate_seed: int = 0):
         self.endpoint = endpoint
         self.model = model
         self.api_key = api_key
@@ -195,8 +197,34 @@ class ReplayPlayer:
         self.history_mode = history_mode  # "live" or "verbatim"
         self.active_users = active_users  # session-aware concurrency
         self.default_max_tokens = default_max_tokens
+        # Open-loop pacing (requests/second, Poisson inter-arrival). 0 = off.
+        self.request_rate = request_rate
+        self._rate_seed = rate_seed
+        self._limiter = None
         self._client = None
         self._live_responses: List[str] = []
+
+    async def _get_limiter(self):
+        """Lazily build the shared Poisson rate limiter (open-loop mode)."""
+        if self._limiter is None and self.request_rate > 0:
+            from clawperf.scheduler import PoissonRateLimiter
+            self._limiter = PoissonRateLimiter(self.request_rate, seed=self._rate_seed)
+        return self._limiter
+
+    async def _paced_send(self, req: ReplayRequest) -> ReplayResult:
+        """Send one request, waiting for a rate-limiter slot first (if any).
+
+        In open-loop mode the result carries rate_skew_ms (actual release
+        minus the scheduled slot) so pacing accuracy is measurable.
+        """
+        limiter = await self._get_limiter()
+        if limiter is None:
+            return await self._send_request(req)
+        slot = await limiter.acquire()
+        skew = (time.monotonic() - slot) * 1000
+        result = await self._send_request(req)
+        result.rate_skew_ms = round(skew, 3)
+        return result
 
     async def _get_client(self):
         if self._client is None:
@@ -218,6 +246,11 @@ class ReplayPlayer:
           ``active_users`` sessions run concurrently.
         - ``verbatim`` without user ids: plain request-level concurrency
           (``concurrency`` in-flight requests).
+
+        With ``request_rate > 0`` every request (from any session) first
+        waits for a slot on one shared Poisson rate limiter — open-loop
+        pacing at ``request_rate`` req/s; the concurrency semaphore is
+        ignored on the request-level path.
         """
         if self.history_mode == "live":
             requests = build_live_history(entries, self._live_responses)
@@ -226,8 +259,11 @@ class ReplayPlayer:
 
         results: List[ReplayResult] = []
         sem = asyncio.Semaphore(self.concurrency)
+        open_loop = self.request_rate > 0
 
         async def _one(req: ReplayRequest) -> ReplayResult:
+            if open_loop:
+                return await self._paced_send(req)
             async with sem:
                 return await self._send_request(req)
 
@@ -235,7 +271,7 @@ class ReplayPlayer:
             # Sequential live-history replay (history depends on prior
             # responses; concurrent live replay isn't well-defined).
             for i, req in enumerate(requests):
-                result = await self._send_request(req)
+                result = await self._paced_send(req)
                 results.append(result)
                 self._live_responses.append(result.generated_text if result.success else "")
                 # Rebuild remaining entries in live-history with the updated
@@ -257,7 +293,7 @@ class ReplayPlayer:
             async def _run_group(reqs: List[ReplayRequest]):
                 async with win:
                     for req in reqs:
-                        results.append(await self._send_request(req))
+                        results.append(await self._paced_send(req))
 
             await asyncio.gather(*[_run_group(g) for g in groups.values()])
         else:
@@ -383,7 +419,7 @@ def summarize_replay(results: List[ReplayResult]) -> Dict:
     )
     decode_toks = total_out / decode_time_s if decode_time_s > 0 else None
 
-    return {
+    summary = {
         "mode": "replay",
         "total_requests": len(results),
         "success_count": len(ok),
@@ -398,3 +434,9 @@ def summarize_replay(results: List[ReplayResult]) -> Dict:
         "itl_p50_ms": _pct(all_itl, 0.50),
         "itl_p95_ms": _pct(all_itl, 0.95),
     }
+    # Open-loop pacing accuracy (present when a request rate was configured).
+    skews = [r.rate_skew_ms for r in results if r.rate_skew_ms is not None]
+    if skews:
+        summary["rate_skew_avg_ms"] = round(sum(skews) / len(skews), 3)
+        summary["rate_skew_max_ms"] = round(max(skews), 3)
+    return summary

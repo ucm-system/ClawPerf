@@ -175,6 +175,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ── Run configuration ──
     g = parser.add_argument_group("Run Configuration")
+    g.add_argument("--request-rate", type=float, default=0.0, metavar="RPS",
+                   help="Open-loop request issue rate in req/s (Poisson inter-arrival, "
+                        "benchmark_serving semantics). 0 (default) = closed-loop: pacing "
+                        "driven by --concurrency (hitrate/replay/trace) or back-to-back "
+                        "turns (scenario/slo/agent). When > 0, --concurrency is ignored "
+                        "for hitrate/replay/trace — requests are released on schedule "
+                        "regardless of completions. Note: --user-arrival schedules when "
+                        "users (sessions) JOIN; --request-rate paces individual requests.")
     g.add_argument("--concurrency", type=int, default=1,
                    help="Request-level concurrency: in-flight requests for "
                         "hitrate measure phase, replay, and trace real replay "
@@ -296,7 +304,10 @@ def _run_compare(args: argparse.Namespace):
 
 
 def build_report_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="clawperf report", description="Generate a Markdown report from a saved JSON result.")
+    p = argparse.ArgumentParser(
+        prog="clawperf report",
+        description="Generate a Markdown report from a saved JSON result.",
+    )
     p.add_argument("input", type=str, help="Path to the results JSON file.")
     p.add_argument("--output", "-o", type=str, default="", help="Output .md file path (default: <input>.md)")
     p.add_argument("--print", action="store_true", help="Also print the markdown to stdout.")
@@ -334,7 +345,9 @@ def build_trace_convert_parser() -> argparse.ArgumentParser:
 
 def _run_trace_convert(args: argparse.Namespace):
     from clawperf.trace_converter import (
-        convert_many, detect_format, write_trace,
+        convert_many,
+        detect_format,
+        write_trace,
     )
 
     for inp in args.inputs:
@@ -354,8 +367,8 @@ def _run_trace_convert(args: argparse.Namespace):
         sys.exit(EXIT_CONFIG_ERROR)
     write_trace(lines, args.output)
     sessions = {}
-    for l in lines:
-        sessions[l["user_id"]] = sessions.get(l["user_id"], 0) + 1
+    for line in lines:
+        sessions[line["user_id"]] = sessions.get(line["user_id"], 0) + 1
     print(f"\nConverted {len(lines)} requests across {len(sessions)} session(s):")
     for uid in sorted(sessions):
         print(f"  session {uid}: {sessions[uid]} requests")
@@ -453,6 +466,7 @@ def main():
                 endpoint=config.endpoint, model=config.model,
                 api_key=config.api_key, timeout=config.request_timeout,
                 concurrency=config.concurrency, history_mode=config.history_mode,
+                request_rate=config.request_rate, rate_seed=0,
             )
             results = await player.replay(entries)
             await player.close()
@@ -490,15 +504,26 @@ def main():
             generate_report(result, output_path=md_path)
 
             # Print summary.
+            bench_s = result["timing"]["bench_time_s"]
             print(f"\n{'=' * 70}")
             print("ClawPerf - Replay Complete")
             print(f"{'=' * 70}")
             print(f"  Entries:      {summary['total_requests']}")
             print(f"  Success:      {summary['success_count']}")
             print(f"  Errors:       {summary['error_count']}")
-            print(f"  TTFT P50:     {summary['ttft_p50_ms']:.1f}ms" if summary.get('ttft_p50_ms') else "  TTFT P50:     N/A")
-            print(f"  TTFT P95:     {summary['ttft_p95_ms']:.1f}ms" if summary.get('ttft_p95_ms') else "  TTFT P95:     N/A")
-            print(f"  Decode tok/s: {summary['decode_tok_s']:.1f}" if summary.get('decode_tok_s') else "  Decode tok/s: N/A")
+            if config.request_rate > 0:
+                achieved = summary["total_requests"] / bench_s if bench_s else 0
+                print(f"  Rate:         {config.request_rate:g} req/s target, "
+                      f"{achieved:.2f} achieved (open-loop)")
+                if summary.get("rate_skew_avg_ms") is not None:
+                    print(f"  Rate skew:    avg {summary['rate_skew_avg_ms']:.1f}ms / "
+                          f"max {summary['rate_skew_max_ms']:.1f}ms")
+            print(f"  TTFT P50:     {summary['ttft_p50_ms']:.1f}ms"
+                  if summary.get('ttft_p50_ms') else "  TTFT P50:     N/A")
+            print(f"  TTFT P95:     {summary['ttft_p95_ms']:.1f}ms"
+                  if summary.get('ttft_p95_ms') else "  TTFT P95:     N/A")
+            print(f"  Decode tok/s: {summary['decode_tok_s']:.1f}"
+                  if summary.get('decode_tok_s') else "  Decode tok/s: N/A")
             print(f"  Results:      {config.output}")
             print(f"  Report:       {md_path}")
             print(f"{'=' * 70}")
@@ -643,6 +668,7 @@ def main():
                         max_tokens=config.output_tokens_per_turn,
                         max_context_tokens=config.model_context_length,
                         tokenizer_path=config.tokenizer,
+                        request_rate=config.request_rate,
                     )
                     return results, bench_s
 
@@ -656,13 +682,23 @@ def main():
                         "input_tokens": r.input_tokens, "output_tokens": r.output_tokens,
                         "itl_count": len(r.itl_values),
                         "error": r.error, "status_code": r.status_code,
+                        "rate_skew_ms": r.rate_skew_ms,
                     }
                     for r in replayed
                 ]
                 print(f"  Replay:      {rsum['success_count']}/{len(replayed)} succeeded")
-                print(f"  TTFT P50:    {rsum['ttft_p50_ms']:.1f}ms" if rsum.get("ttft_p50_ms") else "  TTFT P50:    N/A")
-                print(f"  Decode:      {rsum['decode_tok_s']:.1f} tok/s" if rsum.get("decode_tok_s") else "  Decode:      N/A")
+                print(f"  TTFT P50:    {rsum['ttft_p50_ms']:.1f}ms"
+                      if rsum.get("ttft_p50_ms") else "  TTFT P50:    N/A")
+                print(f"  Decode:      {rsum['decode_tok_s']:.1f} tok/s"
+                      if rsum.get("decode_tok_s") else "  Decode:      N/A")
                 print(f"  Replay wall: {bench_s:.1f}s")
+                if config.request_rate > 0:
+                    achieved = len(replayed) / bench_s if bench_s > 0 else 0
+                    print(f"  Rate:        {config.request_rate:g} req/s target, "
+                          f"{achieved:.2f} req/s achieved")
+                    if rsum.get("rate_skew_avg_ms") is not None:
+                        print(f"  Rate skew:   avg {rsum['rate_skew_avg_ms']:.1f}ms / "
+                              f"max {rsum['rate_skew_max_ms']:.1f}ms")
             else:
                 print("\n  Real replay: trace has messages but no --endpoint/--model "
                       "(simulation only). Pass both to also replay real requests.")

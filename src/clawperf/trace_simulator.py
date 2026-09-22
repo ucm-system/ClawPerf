@@ -513,7 +513,9 @@ def summarize_simulation(
 # per-request timing, and summary math live in player.py so trace/replay modes
 # share one implementation.
 
-from clawperf.player import ReplayPlayer, ReplayResult, summarize_replay  # noqa: F401
+# Imported at the bottom on purpose: pure-simulation runs (no --endpoint) must
+# not pull in player/httpx, and player imports this module's TraceEntry types.
+from clawperf.player import ReplayPlayer, ReplayResult, summarize_replay  # noqa: E402,F401
 
 TraceReplayResult = ReplayResult  # backward-compatible alias
 replay_summary = summarize_replay  # backward-compatible alias
@@ -587,6 +589,7 @@ async def replay_trace_requests(
     max_tokens: int = 512,
     max_context_tokens: int = 0,
     tokenizer_path: str = "",
+    request_rate: float = 0.0,
 ) -> Tuple[List[TraceReplayResult], float]:
     """Replay real requests from a trace against a live LLM endpoint.
 
@@ -675,6 +678,7 @@ async def replay_trace_requests(
         timeout=timeout, concurrency=concurrency,
         history_mode="verbatim", active_users=active_users,
         default_max_tokens=max_tokens,
+        request_rate=request_rate,
     )
     try:
         results = await player.replay(flat)

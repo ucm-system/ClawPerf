@@ -14,7 +14,6 @@ import os
 import re
 from typing import Optional
 
-
 # ── Flexible SLO constraints ──────────────────────────────────────────────────
 #
 # Syntax:  <metric>.<agg><op><value_ms>
@@ -154,8 +153,14 @@ class BenchmarkConfig:
     hit_rate: Optional[float] = None  # target fraction that's shared (0..1); derives prefix_len
     prefix_num: int = 1            # number of DISTINCT prefixes (requests-per-prefix = N//prefix_num)
     prefill: bool = True           # inject prefixes into cache before measuring
-    concurrency: int = 1           # in-flight requests during measure phase
+    concurrency: int = 1           # in-flight requests during measure phase (closed-loop)
     seed: int = 0                  # reproducibility seed for prompt construction
+
+    # ── Request-rate configuration (hitrate / replay / trace real replay) ──
+    # Open-loop issue rate in requests/second (Poisson inter-arrival, the
+    # benchmark_serving --request-rate semantics). 0 (default) = closed-loop:
+    # pacing driven by --concurrency. When > 0, --concurrency is ignored.
+    request_rate: float = 0.0
 
     # ── SLO mode configuration (only with --mode slo) ──
     # Flexible constraints, e.g. ("ttft.p99<=1500", "tpot.avg<=30", "e2e.max<=30000").
@@ -413,6 +418,8 @@ class BenchmarkConfig:
             problems.append("max_turns must be >= 1.")
         if self.max_consecutive_failures < 0:
             problems.append("max_consecutive_failures must be >= 0.")
+        if self.request_rate < 0:
+            problems.append("request_rate must be >= 0 (0 = closed-loop; >0 = req/s).")
 
         valid_modes = ("scenario", "hitrate", "slo", "agent", "record", "replay", "trace")
         if self.mode not in valid_modes:
@@ -551,6 +558,7 @@ def load_yaml_config(path: str) -> dict:
     dropped.
     """
     import logging
+
     import yaml
 
     with open(path, encoding="utf-8") as f:
