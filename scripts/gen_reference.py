@@ -119,6 +119,16 @@ def code(text: str, cls: str = "inline") -> str:
 
 # ── Option introspection ─────────────────────────────────────────────────────
 
+def _help_text(action) -> str:
+    """Raw help string, with argparse's ``%%`` escaping undone.
+
+    argparse runs help strings through ``%``-formatting, so a literal percent
+    sign has to be written ``%%`` in the source (and renders as ``%`` in
+    ``--help``). We read ``action.help`` directly, so undo it here.
+    """
+    return (action.help or "").strip().replace("%%", "%")
+
+
 def collect_groups() -> list[tuple[str, list[dict]]]:
     """Return [(group title, [option rows])] straight from argparse."""
     parser = build_parser()
@@ -137,8 +147,8 @@ def collect_groups() -> list[tuple[str, list[dict]]]:
                 order.append(action.dest)
             row = by_dest[action.dest]
             row["opts"].extend(action.option_strings)
-            if (action.help or "").strip():
-                row["helps"].append(action.help.strip())
+            if _help_text(action):
+                row["helps"].append(_help_text(action))
             row["actions"].append(type(action).__name__)
             if action.metavar:
                 row["metavar"] = action.metavar

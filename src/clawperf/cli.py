@@ -105,7 +105,7 @@ def build_parser() -> argparse.ArgumentParser:
                         "(ignored when --slo constraints are given).")
     g.add_argument("--slo-error-rate", type=float, default=None, metavar="FRACTION",
                    help="Extra pass condition: the step's error rate must stay at or below "
-                        "this fraction (0..1), e.g. 0.01 = 1%.")
+                        "this fraction (0..1), e.g. 0.01 = 1%%.")
     g.add_argument("--slo-min-users", type=int, default=1,
                    help="Lowest concurrency level the sweep starts from.")
     g.add_argument("--slo-max-users", type=int, default=100,

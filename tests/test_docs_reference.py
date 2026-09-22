@@ -36,6 +36,18 @@ def test_every_option_has_help_text():
     assert missing == [], f"undocumented options: {missing}"
 
 
+def test_help_renders():
+    """argparse runs help through %-formatting: a bare '%' crashes --help.
+
+    The Docker image build runs `clawperf --help`, so this is not cosmetic.
+    """
+    parser = build_parser()
+    text = parser.format_help()  # would raise on an unescaped '%'
+    assert "usage:" in text
+    assert "%%" not in text, "help output shows a literal '%%'"
+    assert "1%" in text  # --slo-error-rate renders its percent sign correctly
+
+
 def test_help_text_is_a_full_sentence():
     """A bare stub like 'Total requests.' is worse than nothing in the site."""
     too_short = [
