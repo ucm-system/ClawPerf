@@ -49,7 +49,7 @@ jobs:
       - name: The generated reference page matches the code
         # docs/reference.html is generated from clawperf --help + the context
         # profiles; a new/renamed flag without regenerating fails here.
-        run: python3 scripts/gen_reference.py --check
+        run: python3 scripts/gen_site.py --check
 
       - name: Layout check (index, headings, overflow) in real Chrome
         # "There is no index" and "the headings are too small" are not things a
@@ -122,6 +122,11 @@ jobs:
           clawperf-mock-server --port 18081 --ttft 30 --tpot 2 &
           sleep 5
           bash scripts/e2e_bash.sh 18081 "$(command -v clawperf)"
+
+      - name: The embedded output samples are still reproducible
+        # docs/samples.json holds real captured runs; this re-runs them (mock
+        # server + bundled tokenizer) and fails if the committed copy is stale.
+        run: python scripts/gen_samples.py --check
 
   package:
     name: Package (sdist + wheel)

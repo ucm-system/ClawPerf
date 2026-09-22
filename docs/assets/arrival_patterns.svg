@@ -1,0 +1,50 @@
+<svg viewBox="0 0 864 292" width="864" xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-label="How sessions arrive: three shapes, one flag. Burst stacks all five sessions at the start, steady spaces them evenly, Poisson spaces them irregularly.">
+  <style>
+    text { font-family: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', system-ui, sans-serif; }
+    .title { font-size: 16px; fill: #1e293b; font-weight: 600; }
+    .rowlabel { font-size: 12px; fill: #1e293b; }
+    .ann { font-size: 10px; fill: #64748b; }
+    .note { font-size: 10px; fill: #94a3b8; }
+    .baseline { stroke: #cbd5e1; stroke-width: 1; }
+    .mk-burst { fill: #dbeafe; stroke: #3b82f6; stroke-width: 1; }
+    .mk-steady { fill: #d1fae5; stroke: #22c55e; stroke-width: 1; }
+    .mk-poisson { fill: #fef3c7; stroke: #f59e0b; stroke-width: 1; }
+  </style>
+
+  <!-- content spans x=28..836, y=20..270.5 -> 28px side padding, 20px top / 21.5px bottom -->
+  <text class="title" x="432" y="32" text-anchor="middle">How sessions arrive: three shapes, one flag</text>
+
+  <!-- Row 1 — burst: timeline y=105, x=160..580; five markers stacked at the same x, x=160..182, y=66..144 -->
+  <text class="rowlabel" x="140" y="109" text-anchor="end">burst</text>
+  <line class="baseline" x1="160" y1="105" x2="580" y2="105"/>
+  <rect class="mk-burst" x="160" y="66" width="22" height="14" rx="4"/>
+  <rect class="mk-burst" x="160" y="82" width="22" height="14" rx="4"/>
+  <rect class="mk-burst" x="160" y="98" width="22" height="14" rx="4"/>
+  <rect class="mk-burst" x="160" y="114" width="22" height="14" rx="4"/>
+  <rect class="mk-burst" x="160" y="130" width="22" height="14" rx="4"/>
+  <text class="ann" x="605" y="109">everyone joins at once — the harshest step</text>
+
+  <!-- Row 2 — steady:&lt;s&gt;: timeline y=180, x=160..580; five markers evenly spaced, centres 171 / 270.5 / 370 / 469.5 / 569 -->
+  <text class="rowlabel" x="140" y="184" text-anchor="end">steady:&lt;s&gt;</text>
+  <line class="baseline" x1="160" y1="180" x2="580" y2="180"/>
+  <rect class="mk-steady" x="160" y="173" width="22" height="14" rx="4"/>
+  <rect class="mk-steady" x="259.5" y="173" width="22" height="14" rx="4"/>
+  <rect class="mk-steady" x="359" y="173" width="22" height="14" rx="4"/>
+  <rect class="mk-steady" x="458.5" y="173" width="22" height="14" rx="4"/>
+  <rect class="mk-steady" x="558" y="173" width="22" height="14" rx="4"/>
+  <text class="ann" x="605" y="184">one new session every N seconds</text>
+
+  <!-- Row 3 — poisson:&lt;lambda&gt;: timeline y=225, x=160..580; five markers with uneven gaps, centres 171 / 220 / 252 / 415 / 560 -->
+  <text class="rowlabel" x="140" y="229" text-anchor="end">poisson:&lt;lambda&gt;</text>
+  <line class="baseline" x1="160" y1="225" x2="580" y2="225"/>
+  <rect class="mk-poisson" x="160" y="218" width="22" height="14" rx="4"/>
+  <rect class="mk-poisson" x="209" y="218" width="22" height="14" rx="4"/>
+  <rect class="mk-poisson" x="241" y="218" width="22" height="14" rx="4"/>
+  <rect class="mk-poisson" x="404" y="218" width="22" height="14" rx="4"/>
+  <rect class="mk-poisson" x="549" y="218" width="22" height="14" rx="4"/>
+  <text class="ann" x="605" y="229">memoryless gaps — closest to real traffic</text>
+
+  <!-- Shared footnote, centred on the content centre x=432 -->
+  <text class="note" x="432" y="268" text-anchor="middle">--user-arrival picks the shape; --request-rate paces individual requests instead.</text>
+</svg>

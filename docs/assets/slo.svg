@@ -1,0 +1,77 @@
+<svg viewBox="0 0 640 306" width="640" xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-label="SLO sweep ladder: 1, 2, 4 and 5 users pass every constraint while 6 users fails; max sustained users is 5 and the binding constraint is e2e.max">
+  <style>
+    text { font-family: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', system-ui, sans-serif; }
+    .title { font-size: 16px; fill: #1e293b; font-weight: 600; }
+    .muted { font-size: 10px; fill: #64748b; }
+    .lvl-pass { font-size: 12px; fill: #1e40af; font-weight: 600; }
+    .lvl-fail { font-size: 12px; fill: #9d174d; font-weight: 600; }
+    .verdict-pass { font-size: 10px; fill: #166534; font-weight: 600; }
+    .verdict-fail { font-size: 10px; fill: #9d174d; font-weight: 600; }
+    .result { font-size: 12px; fill: #166534; font-weight: 600; }
+    .result-sub { font-size: 10px; fill: #166534; }
+    .box-pass { fill: #dbeafe; stroke: #3b82f6; stroke-width: 1.5; }
+    .box-fail { fill: #fce7f3; stroke: #ec4899; stroke-width: 1.5; }
+    .chip-pass { fill: #d1fae5; stroke: #22c55e; stroke-width: 1; }
+    .chip-fail { fill: #fce7f3; stroke: #ec4899; stroke-width: 1; }
+    .resultbox { fill: #d1fae5; stroke: #22c55e; stroke-width: 1.5; }
+  </style>
+
+  <defs>
+    <marker id="arrow-blue" markerWidth="8" markerHeight="8" refX="2" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,0 L8,4 L0,8 L2,4 z" fill="#3b82f6"/>
+    </marker>
+    <marker id="arrow-pink" markerWidth="8" markerHeight="8" refX="2" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,0 L8,4 L0,8 L2,4 z" fill="#ec4899"/>
+    </marker>
+  </defs>
+
+  <text class="title" x="320" y="36" text-anchor="middle">SLO sweep: raise the load until a constraint breaks</text>
+
+  <!-- Constraints re-evaluated at every rung of the ladder -->
+  <text class="muted" x="320" y="66" text-anchor="middle">constraints evaluated at every level:  ttft.p99 ≤ 1500ms · tpot.avg ≤ 30ms · e2e.max ≤ 30000ms</text>
+
+  <!-- Ladder connectors: 5 boxes of 96x52 at y=92, 28px gaps, centres y=118 -->
+  <path d="M125,118 L 137,118" fill="none" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+  <path d="M249,118 L 261,118" fill="none" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+  <path d="M373,118 L 385,118" fill="none" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+  <path d="M497,118 L 509,118" fill="none" stroke="#ec4899" stroke-width="1.5" marker-end="url(#arrow-pink)"/>
+
+  <!-- Level 1: 1 user — box x=24..120, centre 72 -->
+  <rect class="box-pass" x="24" y="92" width="96" height="52" rx="8"/>
+  <text class="lvl-pass" x="72" y="122" text-anchor="middle">1 user</text>
+  <rect class="chip-pass" x="52" y="152" width="40" height="18" rx="9"/>
+  <text class="verdict-pass" x="72" y="164.5" text-anchor="middle">PASS</text>
+
+  <!-- Level 2: 2 users — box x=148..244, centre 196 -->
+  <rect class="box-pass" x="148" y="92" width="96" height="52" rx="8"/>
+  <text class="lvl-pass" x="196" y="122" text-anchor="middle">2 users</text>
+  <rect class="chip-pass" x="176" y="152" width="40" height="18" rx="9"/>
+  <text class="verdict-pass" x="196" y="164.5" text-anchor="middle">PASS</text>
+
+  <!-- Level 3: 4 users — box x=272..368, centre 320 -->
+  <rect class="box-pass" x="272" y="92" width="96" height="52" rx="8"/>
+  <text class="lvl-pass" x="320" y="122" text-anchor="middle">4 users</text>
+  <rect class="chip-pass" x="300" y="152" width="40" height="18" rx="9"/>
+  <text class="verdict-pass" x="320" y="164.5" text-anchor="middle">PASS</text>
+
+  <!-- Level 4: 5 users — box x=396..492, centre 444 -->
+  <rect class="box-pass" x="396" y="92" width="96" height="52" rx="8"/>
+  <text class="lvl-pass" x="444" y="122" text-anchor="middle">5 users</text>
+  <rect class="chip-pass" x="424" y="152" width="40" height="18" rx="9"/>
+  <text class="verdict-pass" x="444" y="164.5" text-anchor="middle">PASS</text>
+
+  <!-- Level 5: 6 users — the breaking rung, box x=520..616, centre 568 -->
+  <rect class="box-fail" x="520" y="92" width="96" height="52" rx="8"/>
+  <text class="lvl-fail" x="568" y="122" text-anchor="middle">6 users</text>
+  <rect class="chip-fail" x="548" y="152" width="40" height="18" rx="9"/>
+  <text class="verdict-fail" x="568" y="164.5" text-anchor="middle">FAIL</text>
+
+  <!-- Verdict: full-width result box, x=24..616, y=200..256 -->
+  <rect class="resultbox" x="24" y="200" width="592" height="56" rx="8"/>
+  <text class="result" x="320" y="222" text-anchor="middle">Max sustained users: 5</text>
+  <text class="result-sub" x="320" y="240" text-anchor="middle">binding constraint: e2e.max — a TTFT-only test would have missed it</text>
+
+  <!-- Step policy -->
+  <text class="muted" x="320" y="280" text-anchor="middle">--slo-step-strategy geometric doubles each step · --slo-step-turns 5 measured turns per level</text>
+</svg>

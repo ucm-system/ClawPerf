@@ -39,23 +39,61 @@
 
 ## 真实运行输出
 
-以下都是真实执行过的命令的终端截图。第一张由仓库里已提交的结果文件生成，来自 **昇腾 910B3** 上的实跑（Qwen3-0.6B，32K 窗口）；第二张是在内置 mock server 上的实跑，任意笔记本无 GPU 都能复现。
+文档站**每种模式一个页面**：示意图、命令、关键参数、一次真实运行的完整输出，以及该怎么读：
 
-**真机 SLO 容量扫描** —— `clawperf report results_e2e/slo.json --print`：
+| 模式 | 页面 |
+|------|------|
+| `scenario` | [负载下不断增长的会话](https://ucm-system.github.io/ClawPerf/modes/scenario.html) |
+| `hitrate` | [前缀缓存到底有没有生效](https://ucm-system.github.io/ClawPerf/modes/hitrate.html) |
+| `slo` | [时延预算下的容量](https://ucm-system.github.io/ClawPerf/modes/slo.html) |
+| `agent` | [真实工具调用工作负载](https://ucm-system.github.io/ClawPerf/modes/agent.html) |
+| `trace` | [用你自己的流量当负载](https://ucm-system.github.io/ClawPerf/modes/trace.html) |
+| `record` & `replay` | [录一次，随处回放](https://ucm-system.github.io/ClawPerf/modes/record-replay.html) |
 
-![clawperf SLO 扫描报告：每个并发档位下的 ttft.p99 / tpot.avg / e2e.max 容量曲线，结论 GOOD，最大可支撑用户数 5](docs/shots/slo.png)
+昇腾 **910B3** 上的真实 SLO 扫描（Qwen3-0.6B，32K 窗口）—— `clawperf report results_e2e/slo.json --print` 的输出：
 
-**实跑多轮场景** —— 配置横幅、预检探针、进度与结果汇总表：
+```
+Report saved to: D:\Project\ClawPerf\results_e2e\slo.md
+# ClawPerf Benchmark Report
+| Field | Value |
+| Model | `qwen3` |
+| Endpoint | `http://110.138.0.3:9155/v1` |
+| Backend | vllm |
+| Mode | `slo` |
+| SLO | ttft.p99<=1500ms, tpot.avg<=30ms, e2e.max<=20000ms |
+| Max Users | 5 |
+| Setup Time | 34.69s |
+| Bench Time | 394.06s |
+## Verdict: ✅ GOOD
+- **Max sustained users:** 5
+## Key Findings
+- Max sustained users meeting SLO: 5
+- SLO criteria: ttft.p99<=1500ms, tpot.avg<=30ms, e2e.max<=20000ms
+## Summary
+| Users | ttft.p99 | tpot.avg | e2e.max | Error | SLO |
+| 1 | 228ms | 9ms | 8888ms | 0.0% | ✅ |
+| 2 | 259ms | 9ms | 9090ms | 0.0% | ✅ |
+| 4 | 624ms | 15ms | 15.5s | 0.0% | ✅ |
+| 5 | 768ms | 15ms | 16.0s | 0.0% | ✅ |
+| 6 | 945ms | 21ms | 22.4s | 0.0% | ❌ |
+| 8 | 822ms | 25ms | 26.6s | 0.0% | ❌ |
+## Methodology
+<details>
+<summary>Click to expand</summary>
+- **TTFT** (Time to First Token): wall time from request send to first content chunk on the wire.
+- **TPOT** (Time Per Output Token): decode time / output tokens, excluding prefill.
+- **ITL** (Inter-Token Latency): gap between consecutive output chunks.
+- **Prefix cache hit rate**: token-level, read from the backend's Prometheus counters (start/end delta). Not
+  request-level.
+- **Verdict thresholds**: TTFT GOOD ≤3s / OK ≤10s; throughput GOOD ≥30 tok/s / OK ≥15 tok/s.
+- **Compaction**: when context exceeds ``max_context_tokens``, history is cleared and the user prefix is incremented.
+- **Decode throughput** isolates generation speed from prefill (excludes TTFT).
+- **Wall-clock per-user throughput** uses real start/end timestamps, not summed per-request latencies.
+</details>
+```
 
-![clawperf scenario 实跑：解析后的配置、进度条与结果表](docs/shots/live-run.png)
-
-**前缀缓存命中率** —— 目标 vs 实测，直接读服务端 Prometheus 计数器：
-
-![clawperf 命中率报告：目标 70% 与实测命中率，以及由此获得的加速比](docs/shots/hitrate.png)
-
-更多截图（KV 缓存预算扫描、结果明细表、shell 引号陷阱的报错提示）见
-[项目主页](https://ucm-system.github.io/ClawPerf/#shots)。它们都由 `python scripts/gen_shots.py`
-从真实运行重新生成。
+文档里出现的每条命令都来自真实运行：报告类输出由仓库中已提交的 `results_e2e/*.json` 重新生成，
+实跑类输出由内置 mock server 生成，可用 `python scripts/gen_samples.py` 复现。
 
 ## 安装
 

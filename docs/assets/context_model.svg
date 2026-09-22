@@ -1,0 +1,76 @@
+<svg viewBox="0 0 690 322" width="690" xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-label="How one request's context is built: a stacked bar of a 28,000-token system prefix, a 10,000-token user prefix, a growing history and a 5,000-token new input">
+  <style>
+    text { font-family: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', system-ui, sans-serif; }
+    .title { font-size: 16px; fill: #1e293b; font-weight: 600; }
+    .ann-name { font-size: 12px; font-weight: 600; fill: #1e293b; }
+    .ann-note { font-size: 10px; fill: #64748b; }
+    .legend { font-size: 10px; fill: #1e293b; }
+    .muted { font-size: 10px; fill: #64748b; }
+    .lbl-system { font-size: 12px; font-weight: 600; fill: #1e40af; }
+    .lbl-user { font-size: 12px; font-weight: 600; fill: #166534; }
+    .lbl-history { font-size: 12px; font-weight: 600; fill: #b45309; }
+    .lbl-new { font-size: 12px; font-weight: 600; fill: #9d174d; }
+    .cnt-system { font-size: 10px; fill: #1e40af; }
+    .cnt-user { font-size: 10px; fill: #166534; }
+    .cnt-history { font-size: 10px; fill: #b45309; }
+    .cnt-new { font-size: 10px; fill: #9d174d; }
+    .seg-system { fill: #dbeafe; stroke: #3b82f6; stroke-width: 1.5; }
+    .seg-user { fill: #d1fae5; stroke: #22c55e; stroke-width: 1.5; }
+    .seg-history { fill: #fef3c7; stroke: #f59e0b; stroke-width: 1.5; }
+    .seg-new { fill: #fce7f3; stroke: #ec4899; stroke-width: 1.5; }
+  </style>
+
+  <defs>
+    <marker id="arrow-amber" markerWidth="8" markerHeight="8" refX="2" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,0 L8,4 L0,8 L2,4 z" fill="#f59e0b"/>
+    </marker>
+  </defs>
+
+  <text class="title" x="345" y="32" text-anchor="middle">How one request's context is built</text>
+
+  <!-- Stacked bar: one row, y=60..112, 640px wide (x=25..665), 4px gap between segments.
+       Widths follow the token counts 28 / 10 / 4 / 5 units; history is drawn narrow because it grows. -->
+  <rect class="seg-system" x="25" y="60" width="360" height="52" rx="6"/>
+  <rect class="seg-user" x="389" y="60" width="128" height="52" rx="6"/>
+  <rect class="seg-history" x="521" y="60" width="64" height="52" rx="6"/>
+  <rect class="seg-new" x="589" y="60" width="76" height="52" rx="6"/>
+
+  <text class="lbl-system" x="205" y="79" text-anchor="middle">system prefix</text>
+  <text class="cnt-system" x="205" y="97" text-anchor="middle">28,000 tokens</text>
+  <text class="lbl-user" x="453" y="79" text-anchor="middle">user prefix</text>
+  <text class="cnt-user" x="453" y="97" text-anchor="middle">10,000 tokens</text>
+  <text class="lbl-history" x="553" y="79" text-anchor="middle">history</text>
+  <text class="cnt-history" x="553" y="97" text-anchor="middle">grows</text>
+  <text class="lbl-new" x="627" y="79" text-anchor="middle">new input</text>
+  <text class="cnt-new" x="627" y="97" text-anchor="middle">5,000 tokens</text>
+
+  <!-- The history segment is drawn narrow: this arrow marks that it keeps growing rightward -->
+  <path d="M521,50 L 585,50" fill="none" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#arrow-amber)"/>
+
+  <!-- Legend: its own row, 27px below the bar, 22px above the annotations -->
+  <rect class="seg-system" x="25" y="139.5" width="12" height="12" rx="2"/>
+  <rect class="seg-user" x="41" y="139.5" width="12" height="12" rx="2"/>
+  <text class="legend" x="61" y="148">blue + green = reused from the prefix cache on turn 2+</text>
+  <rect class="seg-new" x="400" y="139.5" width="12" height="12" rx="2"/>
+  <text class="legend" x="420" y="148">pink = always cold prefill</text>
+
+  <!-- Per-segment annotations: swatch + name + note -->
+  <rect class="seg-system" x="25" y="173.5" width="12" height="12" rx="2"/>
+  <text class="ann-name" x="48" y="182">system prefix</text>
+  <text class="ann-note" x="173" y="182">shared by every session (reused from cache)</text>
+
+  <rect class="seg-user" x="25" y="201.5" width="12" height="12" rx="2"/>
+  <text class="ann-name" x="48" y="210">user prefix</text>
+  <text class="ann-note" x="173" y="210">distinct per session</text>
+
+  <rect class="seg-history" x="25" y="229.5" width="12" height="12" rx="2"/>
+  <text class="ann-name" x="48" y="238">history</text>
+  <text class="ann-note" x="173" y="238">appended each turn, compacted at the window</text>
+
+  <rect class="seg-new" x="25" y="257.5" width="12" height="12" rx="2"/>
+  <text class="ann-name" x="48" y="266">new input</text>
+  <text class="ann-note" x="173" y="266">always cold — this is the only part that must be prefilled</text>
+
+  <text class="muted" x="25" y="298">These four numbers are exactly what a --context-profile sets (medium: 28K / 10K / 5K).</text>
+</svg>

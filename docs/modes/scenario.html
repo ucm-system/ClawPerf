@@ -3,13 +3,13 @@
 <head>
 <meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
-<title>LLM serving benchmarks under real agent workloads — ClawPerf</title>
-<meta name='description' content='ClawPerf benchmarks LLM serving under real agent workloads: seven modes, one CLI.'>
-<link rel='canonical' href='https://ucm-system.github.io/ClawPerf/'>
+<title>scenario — The core agentic-load simulator — ClawPerf</title>
+<meta name='description' content='scenario — The core agentic-load simulator — ClawPerf mode documentation.'>
+<link rel='canonical' href='https://ucm-system.github.io/ClawPerf/modes/scenario.html'>
 <meta property='og:type' content='website'>
-<meta property='og:title' content='LLM serving benchmarks under real agent workloads — ClawPerf'>
-<meta property='og:description' content='ClawPerf benchmarks LLM serving under real agent workloads: seven modes, one CLI.'>
-<meta property='og:url' content='https://ucm-system.github.io/ClawPerf/'>
+<meta property='og:title' content='scenario — The core agentic-load simulator — ClawPerf'>
+<meta property='og:description' content='scenario — The core agentic-load simulator — ClawPerf mode documentation.'>
+<meta property='og:url' content='https://ucm-system.github.io/ClawPerf/modes/scenario.html'>
 <meta name='theme-color' content='#0f172a'>
 <link rel='icon' href='data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f172a'/%3E%3Cg fill='%2338bdf8'%3E%3Crect x='7' y='17' width='4' height='8' rx='1'/%3E%3Crect x='14' y='12' width='4' height='13' rx='1'/%3E%3Crect x='21' y='7' width='4' height='18' rx='1'/%3E%3C/g%3E%3C/svg%3E'>
 <style>
@@ -208,7 +208,7 @@
 
 <header class='top'>
   <div class='wrap top-inner'>
-    <a class='brand' href='index.html'>
+    <a class='brand' href='../index.html'>
       <svg width='24' height='24' viewBox='0 0 32 32' aria-hidden='true'>
         <rect width='32' height='32' rx='7' fill='#0f172a'/>
         <g fill='#38bdf8'>
@@ -220,10 +220,10 @@
       ClawPerf
     </a>
     <nav class='toplinks'>
-      <a href='quickstart.html'><span class='en'>Quick start</span><span class='zh'>快速开始</span></a>
-      <a href='modes/scenario.html'><span class='en'>Modes</span><span class='zh'>模式</span></a>
-      <a href='configuration.html'><span class='en'>Configuration</span><span class='zh'>配置</span></a>
-      <a href='reference.html'><span class='en'>Reference</span><span class='zh'>完整参考</span></a>
+      <a href='../quickstart.html'><span class='en'>Quick start</span><span class='zh'>快速开始</span></a>
+      <a href='../modes/scenario.html'><span class='en'>Modes</span><span class='zh'>模式</span></a>
+      <a href='../configuration.html'><span class='en'>Configuration</span><span class='zh'>配置</span></a>
+      <a href='../reference.html'><span class='en'>Reference</span><span class='zh'>完整参考</span></a>
       <a href='https://github.com/ucm-system/ClawPerf'>GitHub</a>
     </nav>
     <div class='toggles'>
@@ -237,118 +237,96 @@
   <details class='toc' id='toc'>
     <summary><span class='en'>Contents</span><span class='zh'>目录</span></summary>
     <nav class='toc-nav'>
-<a class='lvl1' href='index.html'><span class='num'>1</span><span class='en'>Overview</span><span class='zh'>总览</span></a>
-<a class='lvl1' href='quickstart.html'><span class='num'>2</span><span class='en'>Quick start</span><span class='zh'>快速开始</span></a>
+<a class='lvl1' href='../index.html'><span class='num'>1</span><span class='en'>Overview</span><span class='zh'>总览</span></a>
+<a class='lvl1' href='../quickstart.html'><span class='num'>2</span><span class='en'>Quick start</span><span class='zh'>快速开始</span></a>
 <span class='group'><span class='num'>3</span><span class='en'>Modes</span><span class='zh'>模式</span></span>
-<a class='lvl2' href='modes/scenario.html'><span class='en'>scenario</span><span class='zh'>scenario</span></a>
-<a class='lvl2' href='modes/hitrate.html'><span class='en'>hitrate</span><span class='zh'>hitrate</span></a>
-<a class='lvl2' href='modes/slo.html'><span class='en'>slo</span><span class='zh'>slo</span></a>
-<a class='lvl2' href='modes/agent.html'><span class='en'>agent</span><span class='zh'>agent</span></a>
-<a class='lvl2' href='modes/trace.html'><span class='en'>trace</span><span class='zh'>trace</span></a>
-<a class='lvl2' href='modes/record-replay.html'><span class='en'>record &amp; replay</span><span class='zh'>record &amp; replay</span></a>
-<a class='lvl1' href='configuration.html'><span class='num'>4</span><span class='en'>Configuration</span><span class='zh'>配置</span></a>
-<a class='lvl1' href='reference.html'><span class='num'>5</span><span class='en'>Reference</span><span class='zh'>完整参考</span></a>
+<a class='lvl3 active' href='../modes/scenario.html'><span class='en'>scenario</span><span class='zh'>scenario</span></a>
+<a class='lvl2' href='../modes/hitrate.html'><span class='en'>hitrate</span><span class='zh'>hitrate</span></a>
+<a class='lvl2' href='../modes/slo.html'><span class='en'>slo</span><span class='zh'>slo</span></a>
+<a class='lvl2' href='../modes/agent.html'><span class='en'>agent</span><span class='zh'>agent</span></a>
+<a class='lvl2' href='../modes/trace.html'><span class='en'>trace</span><span class='zh'>trace</span></a>
+<a class='lvl2' href='../modes/record-replay.html'><span class='en'>record &amp; replay</span><span class='zh'>record &amp; replay</span></a>
+<a class='lvl1' href='../configuration.html'><span class='num'>4</span><span class='en'>Configuration</span><span class='zh'>配置</span></a>
+<a class='lvl1' href='../reference.html'><span class='num'>5</span><span class='en'>Reference</span><span class='zh'>完整参考</span></a>
+<div class='sep'></div>
+<a class='lvl2' href='#why'><span class='en'>On this page</span><span class='zh'>本页目录</span></a>
+<a class='lvl3' href='#why'><span class='en'>Why this mode</span><span class='zh'>为什么做</span></a>
+<a class='lvl3' href='#how'><span class='en'>How to run it</span><span class='zh'>怎么用</span></a>
+<a class='lvl3' href='#params'><span class='en'>Parameters</span><span class='zh'>关键参数</span></a>
+<a class='lvl3' href='#output'><span class='en'>Real output</span><span class='zh'>真实输出</span></a>
+<a class='lvl3' href='#read'><span class='en'>How to read it</span><span class='zh'>怎么读结果</span></a>
 <div class='sep'></div>
 <a class='lvl2' href='https://github.com/ucm-system/ClawPerf'><span class='en'>GitHub</span><span class='zh'>GitHub</span></a>
-<a class='lvl2' href='reference.html#params'><span class='en'>All parameters</span><span class='zh'>全部参数</span></a>
-<a class='lvl2' href='reference.html#trouble'><span class='en'>Troubleshooting</span><span class='zh'>故障排查</span></a>
+<a class='lvl2' href='../reference.html#params'><span class='en'>All parameters</span><span class='zh'>全部参数</span></a>
+<a class='lvl2' href='../reference.html#trouble'><span class='en'>Troubleshooting</span><span class='zh'>故障排查</span></a>
     </nav>
   </details>
   <main>
 <div class='wrap' style='padding-top:34px'>
-  <p class='eyebrow'><span class='en'>LLM serving benchmarks</span><span class='zh'>LLM 推理服务基准</span></p>
-  <h1>ClawPerf</h1>
-  <p class='lead'><span class='en'>Benchmark LLM serving under <b>real agent workloads</b> — multi-turn, long-context, prefix-cache-heavy traffic. Seven modes, one CLI, built on <a href='https://github.com/modelscope/evalscope'>EvalScope</a>.</span><span class='zh'>面向 <b>真实 Agent 负载</b>的 LLM 推理服务性能基准 —— 多轮对话、长上下文、前缀缓存密集的流量。七种模式，一个 CLI，构建在 <a href='https://github.com/modelscope/evalscope'>EvalScope</a> 之上。</span></p>
-  <div class='next'>
-    <a class='btn primary' href='quickstart.html'><span class='en'>Quick start</span><span class='zh'>快速开始</span></a>
-    <a class='btn' href='reference.html'><span class='en'>Full reference</span><span class='zh'>完整参考</span></a>
-    <a class='btn' href='https://github.com/ucm-system/ClawPerf'>GitHub</a>
-    <a class='btn' href='https://github.com/ucm-system/ClawPerf/releases'><span class='en'>Releases &amp; images</span><span class='zh'>发行版与镜像</span></a>
-  </div>
-</div>
+  <p class='eyebrow'><span class='en'>Mode</span><span class='zh'>模式</span> · scenario</p>
+  <h1>scenario: <span class='en'>The core agentic-load simulator</span><span class='zh'>核心 Agent 负载模拟器</span></h1>
+  <p class='lead'><span class='en'>What this mode answers, how to run it, and what the output tells you.</span><span class='zh'>这个模式回答什么、怎么用、以及输出该怎么读。</span></p>
 
-<div class='wrap' style='margin-top:36px'>
-  <h2><span class='en'>First run</span><span class='zh'>首次运行</span></h2>
-  <p class='sub'><span class='en'>The default mode is <code class='inline'>scenario</code>: N users holding independent conversations that grow turn by turn. Point <code class='inline'>--tokenizer</code> at a local directory — it is loaded strictly offline.</span><span class='zh'>默认模式是 <code class='inline'>scenario</code>：N 个用户各自进行不断增长的多轮会话。把 <code class='inline'>--tokenizer</code> 指向本地目录 —— 它会严格离线加载。</span></p>
+  <h2 id='why'><span class='en'>Why this mode exists</span><span class='zh'>为什么做这个模式</span></h2>
+  <p class='why'><span class='en'><b>Why:</b> a coding agent does not send one prompt — it grows a conversation, reuses the same system prefix every turn, and several sessions run at once. A single-shot benchmark cannot see the prefill that accumulates turn by turn, so it reports a TTFT your users will never get. This mode models the conversation.</span><span class='zh'><b>为什么做：</b>编码 Agent 不会只发一次请求 —— 它让会话不断增长、每轮复用同一段系统前缀，并且多个会话并发。单次请求压测看不到逐轮累积的预填充量，于是给出一个用户永远拿不到的 TTFT。这个模式直接对「会话」建模。</span></p>
+  <figure class='diagram'>
+  <img loading='lazy' src='../assets/workload.svg' alt='The core agentic-load simulator'>
+  <figcaption><span class='en'>Each turn reuses everything the previous turn already prefilled: the system prefix, the user prefix and the conversation history. Only the newest input is cold-prefilled.</span><span class='zh'>每一轮都复用了上一轮已预填充的内容：系统前缀、用户前缀与会话历史；只有最新输入需要冷预填充。</span></figcaption>
+</figure>
+
+  <h2 id='how'><span class='en'>How to run it</span><span class='zh'>怎么用</span></h2>
   <div class='sample'>
   <div class='sample-head'><span class='sample-title'>bash</span><button class='copy' type='button' data-copy>Copy</button></div>
   <pre><code>clawperf <span class='flag'>--mode</span> scenario \
   <span class='flag'>--endpoint</span> http://localhost:8000/v1 <span class='flag'>--model</span> Qwen3-0.6B \
   <span class='flag'>--tokenizer</span> /mnt/model/Qwen3-0.6B \
-  <span class='flag'>--context-profile</span> medium <span class='flag'>--num-users</span> 8 <span class='flag'>--max-turns</span> 20 \
-  <span class='flag'>--metrics-endpoint</span> http://localhost:8000/metrics \
-  <span class='flag'>--output</span> results.json</code></pre>
+  <span class='flag'>--context-profile</span> medium \
+  <span class='flag'>--num-users</span> 8 <span class='flag'>--max-turns</span> 20 <span class='flag'>--user-arrival</span> poisson:2 \
+  <span class='flag'>--metrics-endpoint</span> http://localhost:8000/metrics <span class='flag'>--reset-cache</span> \
+  <span class='flag'>--output</span> results_scenario.json</code></pre>
 </div>
-  <div class='next'>
-    <a class='btn primary' href='quickstart.html'><span class='en'>Quick start</span><span class='zh'>快速开始</span></a>
-    <a class='btn' href='configuration.html'><span class='en'>Context profiles &amp; knobs</span><span class='zh'>档位与旋钮</span></a>
-  </div>
-</div>
+  
 
-<div class='wrap' style='margin-top:36px'>
-  <div class='grid c3'>
-    <div class='card'><h3><span class='en'>7 modes</span><span class='zh'>7 种模式</span></h3>
-      <p><span class='en'>Each answers a different question — see the map below.</span><span class='zh'>每种回答一个不同的问题 —— 见下方模式地图。</span></p></div>
-    <div class='card'><h3><span class='en'>4 backends</span><span class='zh'>4 种后端</span></h3>
-      <p><span class='en'>vLLM · SGLang · MindIE · vllm-ascend, with per-backend metric mapping.</span><span class='zh'>vLLM · SGLang · MindIE · vllm-ascend，指标映射按后端区分。</span></p></div>
-    <div class='card'><h3>amd64 + arm64</h3>
-      <p><span class='en'>Native multi-arch images, plus a mock server so CI needs no GPU.</span><span class='zh'>原生双架构镜像，另带 mock server，CI 无需 GPU。</span></p></div>
-  </div>
-</div>
+  <h2 id='params'><span class='en'>Parameters that matter</span><span class='zh'>关键参数</span></h2>
+  <div class='tbl-scroll'><table class='kv'><tbody><tr><td><code class='inline'>--context-profile</code></td><td><span class='en'>Named context size: <code class='inline'>fresh</code> 7K → <code class='inline'>xxl</code> 392K. Sets the system prefix, per-user prefix and per-turn input at once.</span><span class='zh'>命名的上下文大小：<code class='inline'>fresh</code> 7K → <code class='inline'>xxl</code> 392K，一次性设定系统前缀、用户前缀与每轮输入。</span></td></tr><tr><td><code class='inline'>--num-users</code></td><td><span class='en'>Concurrent sessions.</span><span class='zh'>并发会话数。</span></td></tr><tr><td><code class='inline'>--max-turns</code></td><td><span class='en'>Turns per session; history accumulates across them.</span><span class='zh'>每个会话的轮数；历史在这些轮之间累积。</span></td></tr><tr><td><code class='inline'>--user-arrival</code></td><td><span class='en'>When sessions join: <code class='inline'>burst</code>, <code class='inline'>steady:&lt;s&gt;</code>, <code class='inline'>poisson:&lt;λ&gt;</code>.</span><span class='zh'>会话加入时机：<code class='inline'>burst</code>、<code class='inline'>steady:&lt;秒&gt;</code>、<code class='inline'>poisson:&lt;λ&gt;</code>。</span></td></tr><tr><td><code class='inline'>--max-context-tokens</code></td><td><span class='en'>Where append-mode compaction triggers — set it to the model's real window.</span><span class='zh'>追加式压缩的触发阈值 —— 设为模型真实窗口。</span></td></tr><tr><td><code class='inline'>--suite</code></td><td><span class='en'>Sweep several (users × profile) combinations in one command.</span><span class='zh'>一条命令扫完多组（并发 × 档位）。</span></td></tr></tbody></table></div>
+  <p class='sub'><span class='en'>The full list, with defaults, is in the</span><span class='zh'>完整参数列表（含默认值）见</span> <a href='../reference.html#params'><span class='en'>reference</span><span class='zh'>完整参考</span></a>.</p>
 
-<div class='wrap' style='margin-top:36px'>
-  <h2><span class='en'>Pick the question you need answered</span><span class='zh'>按你要回答的问题选模式</span></h2>
-  <p class='sub'><span class='en'>Every mode writes a JSON result plus a Markdown report with a verdict. Each one has its own page: why it exists, a diagram, the command, the parameters and a real run.</span><span class='zh'>每种模式都会产出 JSON 结果与带结论的 Markdown 报告。每种模式一个页面：为什么做、示意图、命令、参数与一次真实运行。</span></p>
-  <div class='grid c2'><a class='card card-link' href='modes/scenario.html'><b><code>scenario</code></b><span class='en'>The core agentic-load simulator</span><span class='zh'>核心 Agent 负载模拟器</span></a><a class='card card-link' href='modes/hitrate.html'><b><code>hitrate</code></b><span class='en'>Is the prefix cache actually working?</span><span class='zh'>前缀缓存到底有没有生效？</span></a><a class='card card-link' href='modes/slo.html'><b><code>slo</code></b><span class='en'>Turn latency budgets into a capacity number</span><span class='zh'>把时延预算变成容量数字</span></a><a class='card card-link' href='modes/agent.html'><b><code>agent</code></b><span class='en'>Let the model actually work</span><span class='zh'>让模型真的干活</span></a><a class='card card-link' href='modes/trace.html'><b><code>trace</code></b><span class='en'>Use your own traffic as the workload</span><span class='zh'>用你自己的流量当负载</span></a><a class='card card-link' href='modes/record-replay.html'><b><code>record &amp; replay</code></b><span class='en'>Capture once, replay anywhere</span><span class='zh'>录一次，随处回放</span></a></div>
-</div>
-
-<div class='wrap' style='margin-top:36px'>
-  <h2><span class='en'>One runner, seven workloads</span><span class='zh'>一个 Runner，七种负载</span></h2>
-  <figure class='diagram'>
-  <img loading='lazy' src='assets/pipeline.svg' alt='ClawPerf pipeline: the workload modes drive a runner that sends requests to a serving backend and polls its metrics'>
-  <figcaption><span class='en'>The same runner drives every mode: it generates the workload, sends it, polls the backend's Prometheus endpoint and writes the JSON result plus the Markdown verdict.</span><span class='zh'>所有模式共用同一个 Runner：生成负载、发送请求、抓取后端的 Prometheus 指标，并写出 JSON 结果与 Markdown 结论。</span></figcaption>
-</figure>
-</div>
-
-<div class='wrap' style='margin-top:36px'>
-  <h2><span class='en'>Measured, not claimed</span><span class='zh'>实测数据，而非宣传</span></h2>
-  <p class='sub'><span class='en'>From the end-to-end run in <a href='https://github.com/ucm-system/ClawPerf/blob/main/docs/E2E_TEST_REPORT.md'>docs/E2E_TEST_REPORT.md</a>: vLLM-Ascend v0.23.0, Qwen3-0.6B, one Ascend 910B3.</span><span class='zh'>数据来自 <a href='https://github.com/ucm-system/ClawPerf/blob/main/docs/E2E_TEST_REPORT.md'>docs/E2E_TEST_REPORT.md</a> 的端到端测试：vLLM-Ascend v0.23.0 + Qwen3-0.6B，单张昇腾 910B3。</span></p>
-  <div class='grid c3'>
-    <div class='card'><h3><span class='en'>Hit rate is verifiable</span><span class='zh'>命中率可验证</span></h3>
-      <p><span class='en'><b>49.90%</b> measured against a <b>50.00%</b> target — 40 requests, 2 distinct prefixes, concurrency 4.</span><span class='zh'>目标 <b>50.00%</b>，实测 <b>49.90%</b> —— 40 个请求、2 个不同前缀、并发 4。</span></p></div>
-    <div class='card'><h3><span class='en'>Real traces reuse a lot</span><span class='zh'>真实 trace 复用率很高</span></h3>
-      <p><span class='en'><b>90.42%</b> prefix-reuse ceiling over 34 real Claude Code requests; replay of the fitting requests succeeded <b>29/29</b>.</span><span class='zh'>34 个真实 Claude Code 请求的复用上限 <b>90.42%</b>；可容纳的请求回放 <b>29/29</b> 成功。</span></p></div>
-    <div class='card'><h3><span class='en'>Capacity is a number</span><span class='zh'>容量是一个确定的数</span></h3>
-      <p><span class='en'><b>5 users</b> sustained under <code class='inline'>ttft.p99≤1500ms</code>, <code class='inline'>tpot.avg≤30ms</code>, <code class='inline'>e2e.max≤20s</code>.</span><span class='zh'>在 <code class='inline'>ttft.p99≤1500ms</code>、<code class='inline'>tpot.avg≤30ms</code>、<code class='inline'>e2e.max≤20s</code> 下可稳定支撑 <b>5 个用户</b>。</span></p></div>
-  </div>
-  <h3><span class='en'>A real SLO sweep</span><span class='zh'>一次真机 SLO 扫描</span></h3>
-  <p class='sub'><span class='en'>Real vLLM-Ascend 910B3 SLO sweep (Qwen3-0.6B, 32K window).</span><span class='zh'>真机 vLLM-Ascend 910B3 SLO 扫描（Qwen3-0.6B，32K 窗口）。</span></p>
+  <h2 id='output'><span class='en'>Real output</span><span class='zh'>真实输出</span></h2>
+  <p class='sub'><span class='en'>Real multi-turn long-context run on the same box.</span><span class='zh'>同一台机器上的真实多轮长上下文运行。</span></p>
   <div class='sample'>
-  <div class='sample-head'><span class='sample-title'>$ clawperf report D:\Project\ClawPerf\results_e2e\slo.json <span class='flag'>--print</span></span><button class='copy' type='button' data-copy>Copy</button></div>
-  <pre><code>Report saved to: D:\Project\ClawPerf\results_e2e\slo.md
+  <div class='sample-head'><span class='sample-title'>$ clawperf report D:\Project\ClawPerf\results_e2e\scenario.json <span class='flag'>--print</span></span><button class='copy' type='button' data-copy>Copy</button></div>
+  <pre><code>Report saved to: D:\Project\ClawPerf\results_e2e\scenario.md
 <span class='head'># ClawPerf Benchmark Report</span>
 <span class='rule'>| Field | Value |</span>
 <span class='rule'>| Model | `qwen3` |</span>
 <span class='rule'>| Endpoint | `http://110.138.0.3:9155/v1` |</span>
 <span class='rule'>| Backend | vllm |</span>
-<span class='rule'>| Mode | `slo` |</span>
-<span class='rule'>| SLO | ttft.p99&lt;=1500ms, tpot.avg&lt;=30ms, e2e.max&lt;=20000ms |</span>
-<span class='rule'>| Max Users | 5 |</span>
-<span class='rule'>| Setup Time | 34.69s |</span>
-<span class='rule'>| Bench Time | 394.06s |</span>
+<span class='rule'>| Mode | `scenario` |</span>
+<span class='rule'>| Users | 2 |</span>
+<span class='rule'>| Max Turns | 4 |</span>
+<span class='rule'>| Context | sys=4000 + usr=1500 + in=1500 tokens |</span>
+<span class='rule'>| Setup Time | 37.23s |</span>
+<span class='rule'>| Bench Time | 40.33s |</span>
 <span class='ok'>## Verdict: ✅ GOOD</span>
-- **Max sustained users:** 5
+<span class='ok'>- **TTFT (P50):** 221ms — instant (GOOD)</span>
+<span class='ok'>- **Decode throughput:** 99.5 tok/s — smooth (GOOD)</span>
 <span class='head'>## Key Findings</span>
-- Max sustained users meeting SLO: 5
-- SLO criteria: ttft.p99&lt;=1500ms, tpot.avg&lt;=30ms, e2e.max&lt;=20000ms
+- Per-user decode throughput ranges 99.4–99.5 tok/s
+- Concurrency efficiency: 50% (max_thru / (min_thru × N))
+- P50 TTFT: 221ms — instant
 <span class='head'>## Summary</span>
-<span class='err'>| Users | ttft.p99 | tpot.avg | e2e.max | Error | SLO |</span>
-<span class='ok'>| 1 | 228ms | 9ms | 8888ms | 0.0% | ✅ |</span>
-<span class='ok'>| 2 | 259ms | 9ms | 9090ms | 0.0% | ✅ |</span>
-<span class='ok'>| 4 | 624ms | 15ms | 15.5s | 0.0% | ✅ |</span>
-<span class='ok'>| 5 | 768ms | 15ms | 16.0s | 0.0% | ✅ |</span>
-<span class='err'>| 6 | 945ms | 21ms | 22.4s | 0.0% | ❌ |</span>
-<span class='err'>| 8 | 822ms | 25ms | 26.6s | 0.0% | ❌ |</span>
+<span class='rule'>| User | In Tok | Out Tok | TTFT P50 | TPOT P50 | E2E P50 | tok/s | Comp | Succ | Fail |</span>
+<span class='rule'>| 0 | 40,589 | 4,000 | 221ms | 9.25ms | 9460ms | 99.5 | 0 | 4 | 0 |</span>
+<span class='rule'>| 1 | 41,313 | 4,000 | 240ms | 9.23ms | 9453ms | 99.4 | 0 | 4 | 0 |</span>
+<span class='head'>## TTFT Scaling (P50)</span>
+```
+   1 user(s) | ███████████████████████████░░░ 221ms
+   2 user(s) | ██████████████████████████████ 240ms
+```
+<span class='head'>## Concurrency Scaling</span>
+<span class='rule'>| Users | Total tok/s | Per-user tok/s | Efficiency |</span>
+<span class='rule'>| 1 | 99.5 | 99.5 | 100% |</span>
+<span class='rule'>| 2 | 198.8 | 99.4 | 100% |</span>
 <span class='head'>## Methodology</span>
 &lt;details&gt;
 &lt;summary&gt;Click to expand&lt;/summary&gt;
@@ -363,6 +341,11 @@
 - **Wall-clock per-user throughput** uses real start/end timestamps, not summed per-request latencies.
 &lt;/details&gt;</code></pre>
 </div>
+
+  <h2 id='read'><span class='en'>How to read it</span><span class='zh'>怎么读结果</span></h2>
+  <ul class='tight'><li><span class='en'><b>TTFT</b> should grow with context: compare the first turns with the last ones.</span><span class='zh'><b>TTFT</b> 应随上下文增长：把最初的几轮和最后的几轮对比。</span></li><li><span class='en'><b>Decode throughput</b> shows whether batching still holds up as sessions multiply.</span><span class='zh'><b>解码吞吐</b>反映会话变多时批处理是否还撑得住。</span></li><li><span class='en'><b>Compactions</b> above zero means a session hit the window and its history was folded — expected on long runs.</span><span class='zh'><b>Compactions</b> 大于 0 表示某个会话触及窗口、历史被折叠 —— 长跑时属正常。</span></li><li><span class='en'><b>Failed requests</b> must stay at zero; a single 400 usually means the context no longer fits.</span><span class='zh'><b>失败请求</b>必须为 0；一旦出现 400，通常是上下文已经放不下了。</span></li></ul>
+
+  <div class='next'><span class='label' style='margin:0'><span class='en'>Other modes</span><span class='zh'>其他模式</span></span><a class='pill' href='hitrate.html'>hitrate</a><a class='pill' href='slo.html'>slo</a><a class='pill' href='agent.html'>agent</a><a class='pill' href='trace.html'>trace</a><a class='pill' href='record-replay.html'>record &amp; replay</a></div>
 </div>
   </main>
 </div>
@@ -373,7 +356,7 @@
       <h4><span class='en'>Project</span><span class='zh'>项目</span></h4>
       <ul>
         <li><a href='https://github.com/ucm-system/ClawPerf'>GitHub</a></li>
-        <li><a href='reference.html'><span class='en'>Reference: modes &amp; all parameters</span><span class='zh'>完整参考：模式与全部参数</span></a></li>
+        <li><a href='../reference.html'><span class='en'>Reference: modes &amp; all parameters</span><span class='zh'>完整参考：模式与全部参数</span></a></li>
         <li><a href='https://github.com/ucm-system/ClawPerf/blob/main/README.md'>README (EN)</a></li>
         <li><a href='https://github.com/ucm-system/ClawPerf/blob/main/README_CN.md'>README（中文）</a></li>
         <li><a href='https://github.com/ucm-system/ClawPerf/blob/main/LICENSE'>Apache-2.0</a></li>

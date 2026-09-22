@@ -85,6 +85,19 @@ class SiteParser(HTMLParser):
             )
 
 
+_ID_CACHE: dict = {}
+
+
+def ids_of(path: Path) -> set:
+    """All id attributes in a page (cached), for cross-page anchor checks."""
+    if path not in _ID_CACHE:
+        parser = SiteParser()
+        parser.feed(path.read_text(encoding="utf-8"))
+        parser.close()
+        _ID_CACHE[path] = parser.ids
+    return _ID_CACHE[path]
+
+
 def check_html(path: Path, root: Path) -> list[str]:
     problems: list[str] = []
     parser = SiteParser()
@@ -100,11 +113,19 @@ def check_html(path: Path, root: Path) -> list[str]:
     for value, line in parser.refs:
         if value.startswith(external) or value.startswith("{{"):
             continue
-        target = (path.parent / value.split("#")[0].split("?")[0]).resolve()
+        file_part, _, fragment = value.partition("#")
+        target = (path.parent / file_part.split("?")[0]).resolve()
         if not target.exists():
             problems.append(f"{path.name}: line {line}: missing asset {value!r}")
-        elif root not in target.parents and target != root:
+            continue
+        if root not in target.parents and target != root:
             problems.append(f"{path.name}: line {line}: asset {value!r} escapes the site root")
+            continue
+        # Cross-page anchors: nav links like reference.html#params must resolve.
+        if fragment and target.suffix == ".html" and fragment not in ids_of(target):
+            problems.append(
+                f"{path.name}: line {line}: dead anchor #{fragment} in {target.name}"
+            )
 
     # In-page anchors (the table of contents) must point at a real id, or the
     # link silently does nothing.
@@ -144,7 +165,7 @@ def main(argv: list[str]) -> int:
         print(f"FAIL: {index} not found")
         return 1
 
-    pages = sorted(root.glob("*.html"))
+    pages = sorted(root.glob("*.html")) + sorted(root.glob("*/*.html"))
     problems: list[str] = []
     for page in pages:
         problems.extend(check_html(page, root))
@@ -156,8 +177,8 @@ def main(argv: list[str]) -> int:
         return 1
 
     svgs = len(list((root / "assets").glob("*.svg")))
-    print(f"site check OK: {len(pages)} page(s) "
-          f"({', '.join(p.name for p in pages)}) + {svgs} SVG figures")
+    names = ", ".join(str(p.relative_to(root)) for p in pages)
+    print(f"site check OK: {len(pages)} page(s) ({names}) + {svgs} SVG figures")
     return 0
 
 

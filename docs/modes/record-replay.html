@@ -3,13 +3,13 @@
 <head>
 <meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
-<title>LLM serving benchmarks under real agent workloads — ClawPerf</title>
-<meta name='description' content='ClawPerf benchmarks LLM serving under real agent workloads: seven modes, one CLI.'>
-<link rel='canonical' href='https://ucm-system.github.io/ClawPerf/'>
+<title>record &amp;amp; replay — Capture once, replay anywhere — ClawPerf</title>
+<meta name='description' content='record &amp;amp; replay — Capture once, replay anywhere — ClawPerf mode documentation.'>
+<link rel='canonical' href='https://ucm-system.github.io/ClawPerf/modes/record-replay.html'>
 <meta property='og:type' content='website'>
-<meta property='og:title' content='LLM serving benchmarks under real agent workloads — ClawPerf'>
-<meta property='og:description' content='ClawPerf benchmarks LLM serving under real agent workloads: seven modes, one CLI.'>
-<meta property='og:url' content='https://ucm-system.github.io/ClawPerf/'>
+<meta property='og:title' content='record &amp;amp; replay — Capture once, replay anywhere — ClawPerf'>
+<meta property='og:description' content='record &amp;amp; replay — Capture once, replay anywhere — ClawPerf mode documentation.'>
+<meta property='og:url' content='https://ucm-system.github.io/ClawPerf/modes/record-replay.html'>
 <meta name='theme-color' content='#0f172a'>
 <link rel='icon' href='data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f172a'/%3E%3Cg fill='%2338bdf8'%3E%3Crect x='7' y='17' width='4' height='8' rx='1'/%3E%3Crect x='14' y='12' width='4' height='13' rx='1'/%3E%3Crect x='21' y='7' width='4' height='18' rx='1'/%3E%3C/g%3E%3C/svg%3E'>
 <style>
@@ -208,7 +208,7 @@
 
 <header class='top'>
   <div class='wrap top-inner'>
-    <a class='brand' href='index.html'>
+    <a class='brand' href='../index.html'>
       <svg width='24' height='24' viewBox='0 0 32 32' aria-hidden='true'>
         <rect width='32' height='32' rx='7' fill='#0f172a'/>
         <g fill='#38bdf8'>
@@ -220,10 +220,10 @@
       ClawPerf
     </a>
     <nav class='toplinks'>
-      <a href='quickstart.html'><span class='en'>Quick start</span><span class='zh'>快速开始</span></a>
-      <a href='modes/scenario.html'><span class='en'>Modes</span><span class='zh'>模式</span></a>
-      <a href='configuration.html'><span class='en'>Configuration</span><span class='zh'>配置</span></a>
-      <a href='reference.html'><span class='en'>Reference</span><span class='zh'>完整参考</span></a>
+      <a href='../quickstart.html'><span class='en'>Quick start</span><span class='zh'>快速开始</span></a>
+      <a href='../modes/scenario.html'><span class='en'>Modes</span><span class='zh'>模式</span></a>
+      <a href='../configuration.html'><span class='en'>Configuration</span><span class='zh'>配置</span></a>
+      <a href='../reference.html'><span class='en'>Reference</span><span class='zh'>完整参考</span></a>
       <a href='https://github.com/ucm-system/ClawPerf'>GitHub</a>
     </nav>
     <div class='toggles'>
@@ -237,118 +237,79 @@
   <details class='toc' id='toc'>
     <summary><span class='en'>Contents</span><span class='zh'>目录</span></summary>
     <nav class='toc-nav'>
-<a class='lvl1' href='index.html'><span class='num'>1</span><span class='en'>Overview</span><span class='zh'>总览</span></a>
-<a class='lvl1' href='quickstart.html'><span class='num'>2</span><span class='en'>Quick start</span><span class='zh'>快速开始</span></a>
+<a class='lvl1' href='../index.html'><span class='num'>1</span><span class='en'>Overview</span><span class='zh'>总览</span></a>
+<a class='lvl1' href='../quickstart.html'><span class='num'>2</span><span class='en'>Quick start</span><span class='zh'>快速开始</span></a>
 <span class='group'><span class='num'>3</span><span class='en'>Modes</span><span class='zh'>模式</span></span>
-<a class='lvl2' href='modes/scenario.html'><span class='en'>scenario</span><span class='zh'>scenario</span></a>
-<a class='lvl2' href='modes/hitrate.html'><span class='en'>hitrate</span><span class='zh'>hitrate</span></a>
-<a class='lvl2' href='modes/slo.html'><span class='en'>slo</span><span class='zh'>slo</span></a>
-<a class='lvl2' href='modes/agent.html'><span class='en'>agent</span><span class='zh'>agent</span></a>
-<a class='lvl2' href='modes/trace.html'><span class='en'>trace</span><span class='zh'>trace</span></a>
-<a class='lvl2' href='modes/record-replay.html'><span class='en'>record &amp; replay</span><span class='zh'>record &amp; replay</span></a>
-<a class='lvl1' href='configuration.html'><span class='num'>4</span><span class='en'>Configuration</span><span class='zh'>配置</span></a>
-<a class='lvl1' href='reference.html'><span class='num'>5</span><span class='en'>Reference</span><span class='zh'>完整参考</span></a>
+<a class='lvl2' href='../modes/scenario.html'><span class='en'>scenario</span><span class='zh'>scenario</span></a>
+<a class='lvl2' href='../modes/hitrate.html'><span class='en'>hitrate</span><span class='zh'>hitrate</span></a>
+<a class='lvl2' href='../modes/slo.html'><span class='en'>slo</span><span class='zh'>slo</span></a>
+<a class='lvl2' href='../modes/agent.html'><span class='en'>agent</span><span class='zh'>agent</span></a>
+<a class='lvl2' href='../modes/trace.html'><span class='en'>trace</span><span class='zh'>trace</span></a>
+<a class='lvl3 active' href='../modes/record-replay.html'><span class='en'>record &amp; replay</span><span class='zh'>record &amp; replay</span></a>
+<a class='lvl1' href='../configuration.html'><span class='num'>4</span><span class='en'>Configuration</span><span class='zh'>配置</span></a>
+<a class='lvl1' href='../reference.html'><span class='num'>5</span><span class='en'>Reference</span><span class='zh'>完整参考</span></a>
+<div class='sep'></div>
+<a class='lvl2' href='#why'><span class='en'>On this page</span><span class='zh'>本页目录</span></a>
+<a class='lvl3' href='#why'><span class='en'>Why this mode</span><span class='zh'>为什么做</span></a>
+<a class='lvl3' href='#how'><span class='en'>How to run it</span><span class='zh'>怎么用</span></a>
+<a class='lvl3' href='#params'><span class='en'>Parameters</span><span class='zh'>关键参数</span></a>
+<a class='lvl3' href='#output'><span class='en'>Real output</span><span class='zh'>真实输出</span></a>
+<a class='lvl3' href='#read'><span class='en'>How to read it</span><span class='zh'>怎么读结果</span></a>
 <div class='sep'></div>
 <a class='lvl2' href='https://github.com/ucm-system/ClawPerf'><span class='en'>GitHub</span><span class='zh'>GitHub</span></a>
-<a class='lvl2' href='reference.html#params'><span class='en'>All parameters</span><span class='zh'>全部参数</span></a>
-<a class='lvl2' href='reference.html#trouble'><span class='en'>Troubleshooting</span><span class='zh'>故障排查</span></a>
+<a class='lvl2' href='../reference.html#params'><span class='en'>All parameters</span><span class='zh'>全部参数</span></a>
+<a class='lvl2' href='../reference.html#trouble'><span class='en'>Troubleshooting</span><span class='zh'>故障排查</span></a>
     </nav>
   </details>
   <main>
 <div class='wrap' style='padding-top:34px'>
-  <p class='eyebrow'><span class='en'>LLM serving benchmarks</span><span class='zh'>LLM 推理服务基准</span></p>
-  <h1>ClawPerf</h1>
-  <p class='lead'><span class='en'>Benchmark LLM serving under <b>real agent workloads</b> — multi-turn, long-context, prefix-cache-heavy traffic. Seven modes, one CLI, built on <a href='https://github.com/modelscope/evalscope'>EvalScope</a>.</span><span class='zh'>面向 <b>真实 Agent 负载</b>的 LLM 推理服务性能基准 —— 多轮对话、长上下文、前缀缓存密集的流量。七种模式，一个 CLI，构建在 <a href='https://github.com/modelscope/evalscope'>EvalScope</a> 之上。</span></p>
-  <div class='next'>
-    <a class='btn primary' href='quickstart.html'><span class='en'>Quick start</span><span class='zh'>快速开始</span></a>
-    <a class='btn' href='reference.html'><span class='en'>Full reference</span><span class='zh'>完整参考</span></a>
-    <a class='btn' href='https://github.com/ucm-system/ClawPerf'>GitHub</a>
-    <a class='btn' href='https://github.com/ucm-system/ClawPerf/releases'><span class='en'>Releases &amp; images</span><span class='zh'>发行版与镜像</span></a>
-  </div>
-</div>
+  <p class='eyebrow'><span class='en'>Mode</span><span class='zh'>模式</span> · record &amp; replay</p>
+  <h1>record &amp; replay: <span class='en'>Capture once, replay anywhere</span><span class='zh'>录一次，随处回放</span></h1>
+  <p class='lead'><span class='en'>What this mode answers, how to run it, and what the output tells you.</span><span class='zh'>这个模式回答什么、怎么用、以及输出该怎么读。</span></p>
 
-<div class='wrap' style='margin-top:36px'>
-  <h2><span class='en'>First run</span><span class='zh'>首次运行</span></h2>
-  <p class='sub'><span class='en'>The default mode is <code class='inline'>scenario</code>: N users holding independent conversations that grow turn by turn. Point <code class='inline'>--tokenizer</code> at a local directory — it is loaded strictly offline.</span><span class='zh'>默认模式是 <code class='inline'>scenario</code>：N 个用户各自进行不断增长的多轮会话。把 <code class='inline'>--tokenizer</code> 指向本地目录 —— 它会严格离线加载。</span></p>
+  <h2 id='why'><span class='en'>Why this mode exists</span><span class='zh'>为什么做这个模式</span></h2>
+  <p class='why'><span class='en'><b>Why:</b> the most convincing benchmark is your own session. Point a real agent (Claude Code, any OpenAI or Anthropic client) at the recording proxy while you work; afterwards you can replay that exact session against any endpoint — before and after a config change, or between two vendors — with the KV-cache prefix aligned the way it was live.</span><span class='zh'><b>为什么做：</b>最有说服力的基准就是你自己的会话。工作时把真实 Agent（Claude Code 或任意 OpenAI/Anthropic 客户端）指向录制代理，之后就能把这段会话原样回放到任意端点 —— 改配置前后对比、两家供应商对比 —— 并且 KV 缓存前缀与当时一致。</span></p>
+  <figure class='diagram'>
+  <img loading='lazy' src='../assets/record-replay.svg' alt='Capture once, replay anywhere'>
+  <figcaption><span class='en'>The proxy sits between the agent and the upstream model and writes every exchange to JSONL; the replay side then feeds that recording to any endpoint.</span><span class='zh'>代理位于 Agent 与上游模型之间，把每一次交互写入 JSONL；回放侧再把这份录制喂给任意端点。</span></figcaption>
+</figure>
+
+  <h2 id='how'><span class='en'>How to run it</span><span class='zh'>怎么用</span></h2>
   <div class='sample'>
   <div class='sample-head'><span class='sample-title'>bash</span><button class='copy' type='button' data-copy>Copy</button></div>
-  <pre><code>clawperf <span class='flag'>--mode</span> scenario \
+  <pre><code><span class='cmt'>#</span> terminal 1 — record (accepts /v1/chat/completions and /v1/messages)
+clawperf <span class='flag'>--mode</span> record <span class='flag'>--proxy-port</span> 9090 \
+  <span class='flag'>--upstream-endpoint</span> https://api.example.com/v1 <span class='flag'>--upstream-api</span> openai \
+  <span class='flag'>--recording</span> session.jsonl
+<span class='cmt'>#</span> ... point your agent at http://localhost:9090/v1, work, then Ctrl+C
+
+<span class='cmt'>#</span> terminal 2 — replay it against any endpoint
+clawperf <span class='flag'>--mode</span> replay <span class='flag'>--recording</span> session.jsonl \
   <span class='flag'>--endpoint</span> http://localhost:8000/v1 <span class='flag'>--model</span> Qwen3-0.6B \
   <span class='flag'>--tokenizer</span> /mnt/model/Qwen3-0.6B \
-  <span class='flag'>--context-profile</span> medium <span class='flag'>--num-users</span> 8 <span class='flag'>--max-turns</span> 20 \
-  <span class='flag'>--metrics-endpoint</span> http://localhost:8000/metrics \
-  <span class='flag'>--output</span> results.json</code></pre>
+  <span class='flag'>--history-mode</span> live <span class='flag'>--concurrency</span> 4 \
+  <span class='flag'>--output</span> results_replay.json</code></pre>
 </div>
-  <div class='next'>
-    <a class='btn primary' href='quickstart.html'><span class='en'>Quick start</span><span class='zh'>快速开始</span></a>
-    <a class='btn' href='configuration.html'><span class='en'>Context profiles &amp; knobs</span><span class='zh'>档位与旋钮</span></a>
-  </div>
-</div>
+  
 
-<div class='wrap' style='margin-top:36px'>
-  <div class='grid c3'>
-    <div class='card'><h3><span class='en'>7 modes</span><span class='zh'>7 种模式</span></h3>
-      <p><span class='en'>Each answers a different question — see the map below.</span><span class='zh'>每种回答一个不同的问题 —— 见下方模式地图。</span></p></div>
-    <div class='card'><h3><span class='en'>4 backends</span><span class='zh'>4 种后端</span></h3>
-      <p><span class='en'>vLLM · SGLang · MindIE · vllm-ascend, with per-backend metric mapping.</span><span class='zh'>vLLM · SGLang · MindIE · vllm-ascend，指标映射按后端区分。</span></p></div>
-    <div class='card'><h3>amd64 + arm64</h3>
-      <p><span class='en'>Native multi-arch images, plus a mock server so CI needs no GPU.</span><span class='zh'>原生双架构镜像，另带 mock server，CI 无需 GPU。</span></p></div>
-  </div>
-</div>
+  <h2 id='params'><span class='en'>Parameters that matter</span><span class='zh'>关键参数</span></h2>
+  <div class='tbl-scroll'><table class='kv'><tbody><tr><td><code class='inline'>--recording</code></td><td><span class='en'>The JSONL file to write (record) or read (replay). Appends across restarts and tells you what it kept.</span><span class='zh'>写入（record）或读取（replay）的 JSONL 文件；跨重启追加，并提示保留了多少历史。</span></td></tr><tr><td><code class='inline'>--upstream-endpoint</code></td><td><span class='en'>Where the proxy forwards to.</span><span class='zh'>代理转发到哪里。</span></td></tr><tr><td><code class='inline'>--upstream-api</code></td><td><span class='en'><code class='inline'>openai</code>, <code class='inline'>anthropic</code> or <code class='inline'>auto</code> — Anthropic is translated on the fly.</span><span class='zh'><code class='inline'>openai</code>、<code class='inline'>anthropic</code> 或 <code class='inline'>auto</code> —— Anthropic 会被实时翻译。</span></td></tr><tr><td><code class='inline'>--history-mode</code></td><td><span class='en'><code class='inline'>live</code> feeds real responses into the next turn (prefix-aligned); <code class='inline'>verbatim</code> replays recorded messages as-is for A/B.</span><span class='zh'><code class='inline'>live</code> 把真实返回作为下一轮历史（前缀对齐）；<code class='inline'>verbatim</code> 原样回放录制内容，适合 A/B。</span></td></tr><tr><td><code class='inline'>--concurrency</code></td><td><span class='en'>In-flight requests during replay.</span><span class='zh'>回放时的在途请求数。</span></td></tr></tbody></table></div>
+  <p class='sub'><span class='en'>The full list, with defaults, is in the</span><span class='zh'>完整参数列表（含默认值）见</span> <a href='../reference.html#params'><span class='en'>reference</span><span class='zh'>完整参考</span></a>.</p>
 
-<div class='wrap' style='margin-top:36px'>
-  <h2><span class='en'>Pick the question you need answered</span><span class='zh'>按你要回答的问题选模式</span></h2>
-  <p class='sub'><span class='en'>Every mode writes a JSON result plus a Markdown report with a verdict. Each one has its own page: why it exists, a diagram, the command, the parameters and a real run.</span><span class='zh'>每种模式都会产出 JSON 结果与带结论的 Markdown 报告。每种模式一个页面：为什么做、示意图、命令、参数与一次真实运行。</span></p>
-  <div class='grid c2'><a class='card card-link' href='modes/scenario.html'><b><code>scenario</code></b><span class='en'>The core agentic-load simulator</span><span class='zh'>核心 Agent 负载模拟器</span></a><a class='card card-link' href='modes/hitrate.html'><b><code>hitrate</code></b><span class='en'>Is the prefix cache actually working?</span><span class='zh'>前缀缓存到底有没有生效？</span></a><a class='card card-link' href='modes/slo.html'><b><code>slo</code></b><span class='en'>Turn latency budgets into a capacity number</span><span class='zh'>把时延预算变成容量数字</span></a><a class='card card-link' href='modes/agent.html'><b><code>agent</code></b><span class='en'>Let the model actually work</span><span class='zh'>让模型真的干活</span></a><a class='card card-link' href='modes/trace.html'><b><code>trace</code></b><span class='en'>Use your own traffic as the workload</span><span class='zh'>用你自己的流量当负载</span></a><a class='card card-link' href='modes/record-replay.html'><b><code>record &amp; replay</code></b><span class='en'>Capture once, replay anywhere</span><span class='zh'>录一次，随处回放</span></a></div>
-</div>
-
-<div class='wrap' style='margin-top:36px'>
-  <h2><span class='en'>One runner, seven workloads</span><span class='zh'>一个 Runner，七种负载</span></h2>
-  <figure class='diagram'>
-  <img loading='lazy' src='assets/pipeline.svg' alt='ClawPerf pipeline: the workload modes drive a runner that sends requests to a serving backend and polls its metrics'>
-  <figcaption><span class='en'>The same runner drives every mode: it generates the workload, sends it, polls the backend's Prometheus endpoint and writes the JSON result plus the Markdown verdict.</span><span class='zh'>所有模式共用同一个 Runner：生成负载、发送请求、抓取后端的 Prometheus 指标，并写出 JSON 结果与 Markdown 结论。</span></figcaption>
-</figure>
-</div>
-
-<div class='wrap' style='margin-top:36px'>
-  <h2><span class='en'>Measured, not claimed</span><span class='zh'>实测数据，而非宣传</span></h2>
-  <p class='sub'><span class='en'>From the end-to-end run in <a href='https://github.com/ucm-system/ClawPerf/blob/main/docs/E2E_TEST_REPORT.md'>docs/E2E_TEST_REPORT.md</a>: vLLM-Ascend v0.23.0, Qwen3-0.6B, one Ascend 910B3.</span><span class='zh'>数据来自 <a href='https://github.com/ucm-system/ClawPerf/blob/main/docs/E2E_TEST_REPORT.md'>docs/E2E_TEST_REPORT.md</a> 的端到端测试：vLLM-Ascend v0.23.0 + Qwen3-0.6B，单张昇腾 910B3。</span></p>
-  <div class='grid c3'>
-    <div class='card'><h3><span class='en'>Hit rate is verifiable</span><span class='zh'>命中率可验证</span></h3>
-      <p><span class='en'><b>49.90%</b> measured against a <b>50.00%</b> target — 40 requests, 2 distinct prefixes, concurrency 4.</span><span class='zh'>目标 <b>50.00%</b>，实测 <b>49.90%</b> —— 40 个请求、2 个不同前缀、并发 4。</span></p></div>
-    <div class='card'><h3><span class='en'>Real traces reuse a lot</span><span class='zh'>真实 trace 复用率很高</span></h3>
-      <p><span class='en'><b>90.42%</b> prefix-reuse ceiling over 34 real Claude Code requests; replay of the fitting requests succeeded <b>29/29</b>.</span><span class='zh'>34 个真实 Claude Code 请求的复用上限 <b>90.42%</b>；可容纳的请求回放 <b>29/29</b> 成功。</span></p></div>
-    <div class='card'><h3><span class='en'>Capacity is a number</span><span class='zh'>容量是一个确定的数</span></h3>
-      <p><span class='en'><b>5 users</b> sustained under <code class='inline'>ttft.p99≤1500ms</code>, <code class='inline'>tpot.avg≤30ms</code>, <code class='inline'>e2e.max≤20s</code>.</span><span class='zh'>在 <code class='inline'>ttft.p99≤1500ms</code>、<code class='inline'>tpot.avg≤30ms</code>、<code class='inline'>e2e.max≤20s</code> 下可稳定支撑 <b>5 个用户</b>。</span></p></div>
-  </div>
-  <h3><span class='en'>A real SLO sweep</span><span class='zh'>一次真机 SLO 扫描</span></h3>
-  <p class='sub'><span class='en'>Real vLLM-Ascend 910B3 SLO sweep (Qwen3-0.6B, 32K window).</span><span class='zh'>真机 vLLM-Ascend 910B3 SLO 扫描（Qwen3-0.6B，32K 窗口）。</span></p>
+  <h2 id='output'><span class='en'>Real output</span><span class='zh'>真实输出</span></h2>
+  <p class='sub'><span class='en'>A recorded agent session replayed with live history.</span><span class='zh'>按 live 历史回放的录制会话。</span></p>
   <div class='sample'>
-  <div class='sample-head'><span class='sample-title'>$ clawperf report D:\Project\ClawPerf\results_e2e\slo.json <span class='flag'>--print</span></span><button class='copy' type='button' data-copy>Copy</button></div>
-  <pre><code>Report saved to: D:\Project\ClawPerf\results_e2e\slo.md
+  <div class='sample-head'><span class='sample-title'>$ clawperf report D:\Project\ClawPerf\results_e2e\replay.json <span class='flag'>--print</span></span><button class='copy' type='button' data-copy>Copy</button></div>
+  <pre><code>Report saved to: D:\Project\ClawPerf\results_e2e\replay.md
 <span class='head'># ClawPerf Benchmark Report</span>
 <span class='rule'>| Field | Value |</span>
 <span class='rule'>| Model | `qwen3` |</span>
 <span class='rule'>| Endpoint | `http://110.138.0.3:9155/v1` |</span>
 <span class='rule'>| Backend | vllm |</span>
-<span class='rule'>| Mode | `slo` |</span>
-<span class='rule'>| SLO | ttft.p99&lt;=1500ms, tpot.avg&lt;=30ms, e2e.max&lt;=20000ms |</span>
-<span class='rule'>| Max Users | 5 |</span>
-<span class='rule'>| Setup Time | 34.69s |</span>
-<span class='rule'>| Bench Time | 394.06s |</span>
-<span class='ok'>## Verdict: ✅ GOOD</span>
-- **Max sustained users:** 5
-<span class='head'>## Key Findings</span>
-- Max sustained users meeting SLO: 5
-- SLO criteria: ttft.p99&lt;=1500ms, tpot.avg&lt;=30ms, e2e.max&lt;=20000ms
-<span class='head'>## Summary</span>
-<span class='err'>| Users | ttft.p99 | tpot.avg | e2e.max | Error | SLO |</span>
-<span class='ok'>| 1 | 228ms | 9ms | 8888ms | 0.0% | ✅ |</span>
-<span class='ok'>| 2 | 259ms | 9ms | 9090ms | 0.0% | ✅ |</span>
-<span class='ok'>| 4 | 624ms | 15ms | 15.5s | 0.0% | ✅ |</span>
-<span class='ok'>| 5 | 768ms | 15ms | 16.0s | 0.0% | ✅ |</span>
-<span class='err'>| 6 | 945ms | 21ms | 22.4s | 0.0% | ❌ |</span>
-<span class='err'>| 8 | 822ms | 25ms | 26.6s | 0.0% | ❌ |</span>
+<span class='rule'>| Mode | `replay` |</span>
+<span class='rule'>| Setup Time | 0.00s |</span>
+<span class='rule'>| Bench Time | 93.84s |</span>
+<span class='err'>## Verdict: ❌ POOR</span>
 <span class='head'>## Methodology</span>
 &lt;details&gt;
 &lt;summary&gt;Click to expand&lt;/summary&gt;
@@ -363,6 +324,11 @@
 - **Wall-clock per-user throughput** uses real start/end timestamps, not summed per-request latencies.
 &lt;/details&gt;</code></pre>
 </div>
+
+  <h2 id='read'><span class='en'>How to read it</span><span class='zh'>怎么读结果</span></h2>
+  <ul class='tight'><li><span class='en'><b>live</b> is what you want for capacity work: the server's own responses become the next turn's history, so prefixes line up exactly as they did in production.</span><span class='zh'>做容量评估要用 <b>live</b>：服务端真实返回成为下一轮历史，前缀与生产环境完全一致。</span></li><li><span class='en'>Use <b>verbatim</b> when comparing two servers on identical input — same bytes, different server.</span><span class='zh'>比较两台服务端处理同样输入时用 <b>verbatim</b> —— 同样的字节，不同的服务端。</span></li><li><span class='en'>The verdict uses the same thresholds as every other mode, so two reports diff cleanly.</span><span class='zh'>结论阈值与其他模式一致，因此两份报告可以直接对比。</span></li></ul>
+
+  <div class='next'><span class='label' style='margin:0'><span class='en'>Other modes</span><span class='zh'>其他模式</span></span><a class='pill' href='scenario.html'>scenario</a><a class='pill' href='hitrate.html'>hitrate</a><a class='pill' href='slo.html'>slo</a><a class='pill' href='agent.html'>agent</a><a class='pill' href='trace.html'>trace</a></div>
 </div>
   </main>
 </div>
@@ -373,7 +339,7 @@
       <h4><span class='en'>Project</span><span class='zh'>项目</span></h4>
       <ul>
         <li><a href='https://github.com/ucm-system/ClawPerf'>GitHub</a></li>
-        <li><a href='reference.html'><span class='en'>Reference: modes &amp; all parameters</span><span class='zh'>完整参考：模式与全部参数</span></a></li>
+        <li><a href='../reference.html'><span class='en'>Reference: modes &amp; all parameters</span><span class='zh'>完整参考：模式与全部参数</span></a></li>
         <li><a href='https://github.com/ucm-system/ClawPerf/blob/main/README.md'>README (EN)</a></li>
         <li><a href='https://github.com/ucm-system/ClawPerf/blob/main/README_CN.md'>README（中文）</a></li>
         <li><a href='https://github.com/ucm-system/ClawPerf/blob/main/LICENSE'>Apache-2.0</a></li>

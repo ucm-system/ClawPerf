@@ -1,0 +1,99 @@
+<svg viewBox="0 0 840 431" width="840" xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-label="Record once, replay anywhere: a recording proxy captures a real agent's traffic into session.jsonl, which is replayed later against any endpoint and compared report to report">
+  <style>
+    text { font-family: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', system-ui, sans-serif; }
+    .title { font-size: 16px; fill: #1e293b; font-weight: 600; }
+    .section { font-size: 10px; fill: #64748b; }
+    .arrowlabel { font-size: 10px; fill: #64748b; }
+    .note { font-size: 10px; fill: #64748b; }
+    .agent { font-size: 12px; fill: #6b21a8; font-weight: 600; }
+    .proxy { font-size: 12px; fill: #b45309; font-weight: 600; }
+    .endpoint { font-size: 12px; fill: #1e40af; font-weight: 600; }
+    .data { font-size: 12px; fill: #166534; font-weight: 600; }
+    .sub { font-size: 10px; fill: #64748b; }
+    .agentbox { fill: #f3e8ff; stroke: #a855f7; stroke-width: 1; }
+    .proxybox { fill: #fef3c7; stroke: #f59e0b; stroke-width: 1; }
+    .endpointbox { fill: #dbeafe; stroke: #3b82f6; stroke-width: 1; }
+    .databox { fill: #d1fae5; stroke: #22c55e; stroke-width: 1; }
+  </style>
+
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="2" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,0 L8,4 L0,8 L2,4 z" fill="#64748b"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="8" markerHeight="8" refX="2" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,0 L8,4 L0,8 L2,4 z" fill="#22c55e"/>
+    </marker>
+  </defs>
+
+  <text class="title" x="420" y="36" text-anchor="middle">record once, replay anywhere</text>
+
+  <!-- ══ RECORD ═══════════════════════════════════════════════════════════ -->
+  <text class="section" x="25" y="62">RECORD</text>
+
+  <!-- Connector labels sit in the whitespace above the row -->
+  <text class="arrowlabel" x="267.5" y="86" text-anchor="middle">/v1/chat/completions</text>
+  <text class="arrowlabel" x="267.5" y="100" text-anchor="middle">also /v1/messages</text>
+  <text class="arrowlabel" x="542.5" y="86" text-anchor="middle">forward + translate</text>
+
+  <!-- ── Connectors (middle layer) ────────────────────────────────────── -->
+  <!-- Real agent right=255 → Recording proxy left=280 -->
+  <path d="M260,140 L269,140" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <!-- Recording proxy right=530 → Upstream endpoint left=555 -->
+  <path d="M535,140 L544,140" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <!-- Recording proxy bottom=167 → session.jsonl top=195 -->
+  <path d="M405,172 L405,184" fill="none" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+
+  <!-- ── Real agent: x=25, y=113, width=230, height=54, right=255, bottom=167 ── -->
+  <rect class="agentbox" x="25" y="113" width="230" height="54" rx="8"/>
+  <text class="agent" x="140" y="134" text-anchor="middle">Real agent</text>
+  <text class="sub" x="140" y="152" text-anchor="middle">Claude Code · any OpenAI client</text>
+
+  <!-- ── Recording proxy: x=280, y=113, width=250, height=54, right=530, bottom=167 ── -->
+  <rect class="proxybox" x="280" y="113" width="250" height="54" rx="8"/>
+  <text class="proxy" x="405" y="134" text-anchor="middle">Recording proxy</text>
+  <text class="sub" x="405" y="152" text-anchor="middle">clawperf --mode record --proxy-port 9090</text>
+
+  <!-- ── Upstream endpoint: x=555, y=104, width=260, height=72, right=815, bottom=176 ── -->
+  <rect class="endpointbox" x="555" y="104" width="260" height="72" rx="8"/>
+  <text class="endpoint" x="685" y="127" text-anchor="middle">Upstream endpoint</text>
+  <text class="sub" x="685" y="145" text-anchor="middle">--upstream-endpoint · --upstream-api</text>
+  <text class="sub" x="685" y="162" text-anchor="middle">openai|anthropic|auto</text>
+
+  <!-- ── Captured session: x=280, y=195, width=250, height=54, bottom=249 ── -->
+  <rect class="databox" x="280" y="195" width="250" height="54" rx="8"/>
+  <text class="data" x="405" y="216" text-anchor="middle">session.jsonl</text>
+  <text class="sub" x="405" y="234" text-anchor="middle">appended across restarts</text>
+
+  <!-- ══ REPLAY ═══════════════════════════════════════════════════════════ -->
+  <text class="section" x="25" y="279">REPLAY</text>
+
+  <!-- ── Connectors: session.jsonl → replay runner → Any endpoint → result ────── -->
+  <path d="M190,330 L199,330" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path d="M395,330 L404,330" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path d="M580,330 L589,330" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ── session.jsonl: x=25, y=303, width=160, height=54, right=185, bottom=357 ── -->
+  <rect class="databox" x="25" y="303" width="160" height="54" rx="8"/>
+  <text class="data" x="105" y="333" text-anchor="middle">session.jsonl</text>
+
+  <!-- ── Replay runner: x=210, y=303, width=180, height=54, right=390, bottom=357 ── -->
+  <rect class="proxybox" x="210" y="303" width="180" height="54" rx="8"/>
+  <text class="proxy" x="300" y="324" text-anchor="middle">clawperf --mode replay</text>
+  <text class="sub" x="300" y="342" text-anchor="middle">--history-mode live|verbatim</text>
+
+  <!-- ── Any endpoint: x=415, y=303, width=160, height=54, right=575, bottom=357 ── -->
+  <rect class="endpointbox" x="415" y="303" width="160" height="54" rx="8"/>
+  <text class="endpoint" x="495" y="324" text-anchor="middle">Any endpoint</text>
+  <text class="sub" x="495" y="342" text-anchor="middle">same session, any server</text>
+
+  <!-- ── Result: x=600, y=294, width=215, height=72, right=815, bottom=366 ── -->
+  <rect class="databox" x="600" y="294" width="215" height="72" rx="8"/>
+  <text class="data" x="707.5" y="317" text-anchor="middle">same latency statistics</text>
+  <text class="data" x="707.5" y="334" text-anchor="middle">as every other mode</text>
+  <text class="sub" x="707.5" y="350" text-anchor="middle">diff two reports instead of guessing</text>
+
+  <!-- ── Replay-mode annotation ───────────────────────────────────────── -->
+  <text class="note" x="420" y="388" text-anchor="middle">live: real responses feed the next turn, so KV-cache prefixes stay aligned</text>
+  <text class="note" x="420" y="403" text-anchor="middle">verbatim: recorded messages replayed as-is for A/B</text>
+</svg>

@@ -2,38 +2,49 @@
 """Layout assertions for the docs site, measured in a real browser.
 
 Nobody eyeballs every docs change, and "the headings are too small" or "there is
-no index" are not things a tag-balance check can catch. This loads the pages in
+no index" are not things a tag-balance check can catch. This loads every page in
 headless Chrome at a desktop and a phone width and asserts the properties that
 were actually asked for:
 
-  * a left index exists, is sticky, sits left of the content, and is populated
+  * a left index exists on every page, is sticky, sits left of the content,
+    and is populated
   * on narrow screens it collapses into a disclosure instead of eating the page
   * headings are big enough to act as landmarks
   * nothing overflows horizontally at either width
-  * every image actually loaded
+  * every image (and every diagram) actually loaded
 
 Requires Chrome/Edge. CI runs it on ubuntu-latest, which ships Chrome.
 
-Usage: python scripts/check_layout.py [--url file:///...]
+Usage: python scripts/check_layout.py [--docs docs]
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import shutil
+import subprocess
 import sys
 from html import unescape
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from gen_shots import _browser_run, find_browser  # noqa: E402
+PAGES = [
+    "index.html",
+    "quickstart.html",
+    "configuration.html",
+    "reference.html",
+    "modes/scenario.html",
+    "modes/hitrate.html",
+    "modes/slo.html",
+    "modes/agent.html",
+    "modes/trace.html",
+    "modes/record-replay.html",
+]
 
-PAGES = ["index.html", "reference.html"]
-
-# Runs inside the page: collect the measurements as JSON in the document title.
 PROBE = """
 <script>
 (function () {
@@ -46,8 +57,7 @@ PROBE = """
     out.toc = {
       left: Math.round(tr.left), width: Math.round(tr.width),
       right: Math.round(tr.right), mainLeft: Math.round(mr.left),
-      position: cs.position, display: cs.display, open: toc.open,
-      links: toc.querySelectorAll('a').length,
+      position: cs.position, open: toc.open,
       visibleLinks: Array.prototype.filter.call(toc.querySelectorAll('a'), function (a) {
         return a.getBoundingClientRect().height > 0;
       }).length,
@@ -55,37 +65,60 @@ PROBE = """
     };
   }
   out.headings = Array.prototype.map.call(
-    document.querySelectorAll('h1, h2, h3.mode-title'),
+    document.querySelectorAll('h1, h2'),
     function (h) { return Math.round(parseFloat(getComputedStyle(h).fontSize)); }
   );
   var imgs = Array.prototype.slice.call(document.images);
   out.images = {
     total: imgs.length,
-    broken: imgs.filter(function (i) { return i.complete && i.naturalWidth === 0; }).length,
-    pending: imgs.filter(function (i) { return !i.complete; }).length
+    broken: imgs.filter(function (i) { return i.complete && i.naturalWidth === 0; }).length
   };
+  out.codeBlocks = document.querySelectorAll('.sample pre').length;
   document.title = JSON.stringify(out);
 })();
 </script>
 """
 
 
-def probe(browser: str, page: Path, width: int, height: int = 1000) -> dict:
-    html = page.read_text(encoding="utf-8")
-    if "</body>" in html:
-        html = html.replace("</body>", PROBE + "</body>")
-    else:
-        html += PROBE
-    # The probe page must sit next to the real one, otherwise its relative
-    # asset URLs (shots/*.png, assets/*.svg) do not resolve.
+def find_browser() -> str | None:
+    candidates = [
+        os.environ.get("CHROME_PATH", ""),
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        shutil.which("google-chrome") or "",
+        shutil.which("chromium") or "",
+        shutil.which("chromium-browser") or "",
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    ]
+    for candidate in candidates:
+        if candidate and Path(candidate).is_file():
+            return candidate
+    return None
+
+
+def browser_run(browser: str, args: list[str]) -> subprocess.CompletedProcess:
+    base = [browser, "--headless=new", "--disable-gpu", "--hide-scrollbars",
+            "--no-first-run", "--no-default-browser-check", "--disable-extensions"]
+    proc = subprocess.run(base + args, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", timeout=180)
+    if proc.returncode != 0 and "--headless=new" in base:
+        base[1] = "--headless"
+        proc = subprocess.run(base + args, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", timeout=180)
+    return proc
+
+
+def probe(browser: str, page: Path, width: int, height: int) -> dict:
+    text = page.read_text(encoding="utf-8")
+    text = text.replace("</body>", PROBE + "</body>") if "</body>" in text else text + PROBE
+    # The probe must sit next to the real page so relative asset URLs resolve.
     tmp = page.parent / f"__probe_{page.name}"
-    tmp.write_text(html, encoding="utf-8", newline="\n")
+    tmp.write_text(text, encoding="utf-8", newline="\n")
     try:
-        proc = _browser_run(browser, [
-            f"--window-size={width},{height}",
-            "--virtual-time-budget=4000",   # let lazy images finish loading
-            "--dump-dom", tmp.as_uri(),
-        ])
+        proc = browser_run(browser, [f"--window-size={width},{height}",
+                                     "--virtual-time-budget=4000", "--dump-dom", tmp.as_uri()])
     finally:
         tmp.unlink(missing_ok=True)
     match = re.search(r"<title>(\{.*?\})</title>", proc.stdout, re.DOTALL)
@@ -94,50 +127,46 @@ def probe(browser: str, page: Path, width: int, height: int = 1000) -> dict:
     return json.loads(unescape(match.group(1)))
 
 
-def check_page(page: Path, browser: str) -> list[str]:
+def check_page(page: Path, browser: str, rel: str) -> list[str]:
     problems: list[str] = []
-    # A tall viewport so lazy-loaded screenshots below the fold actually load.
-    desktop = probe(browser, page, 1440, height=7000)
-    mobile = probe(browser, page, 390, height=4000)
+    desktop = probe(browser, page, 1440, 7000)   # tall: let lazy diagrams load
+    mobile = probe(browser, page, 390, 4000)
 
     if desktop["overflow"] > 1:
-        problems.append(f"{page.name}: horizontal overflow at 1440px ({desktop['overflow']}px)")
+        problems.append(f"{rel}: horizontal overflow at 1440px ({desktop['overflow']}px)")
     if mobile["overflow"] > 1:
-        problems.append(f"{page.name}: horizontal overflow at 390px ({mobile['overflow']}px)")
+        problems.append(f"{rel}: horizontal overflow at 390px ({mobile['overflow']}px)")
 
-    if not desktop.get("headings"):
-        problems.append(f"{page.name}: no headings found")
-    else:
-        small = [s for s in desktop["headings"] if s < 26]
-        if small:
-            problems.append(f"{page.name}: heading(s) below 26px: {small}")
+    headings = desktop.get("headings") or []
+    small = [s for s in headings if s < 26]
+    if not headings:
+        problems.append(f"{rel}: no headings found")
+    elif small:
+        problems.append(f"{rel}: heading(s) below 26px: {small}")
 
-    if desktop["images"]["broken"]:
-        problems.append(
-            f"{page.name}: {desktop['images']['broken']}/{desktop['images']['total']} "
-            "images failed to load"
-        )
+    images = desktop.get("images") or {}
+    if images.get("broken"):
+        problems.append(f"{rel}: {images['broken']}/{images.get('total')} images failed to load")
 
     toc = desktop.get("toc")
-    if page.name == "index.html":
-        if not toc:
-            problems.append("index.html: no left index (details.toc) found")
-        else:
-            if toc["position"] != "sticky":
-                problems.append(f"index.html: index is not sticky (position: {toc['position']})")
-            if toc["right"] > toc["mainLeft"]:
-                problems.append("index.html: index is not to the left of the content")
-            if not 180 <= toc["width"] <= 360:
-                problems.append(f"index.html: index width {toc['width']}px is out of range")
-            if toc["visibleLinks"] < 18:
-                problems.append(f"index.html: only {toc['visibleLinks']} index links are visible")
-            if toc["summaryDisplay"] != "none":
-                problems.append("index.html: the index summary should be hidden on desktop")
-            mobile_toc = mobile.get("toc")
-            if not mobile_toc or mobile_toc["summaryDisplay"] == "none":
-                problems.append("index.html: the index should collapse into a disclosure on mobile")
-            elif mobile_toc["position"] != "static":
-                problems.append("index.html: the collapsed index should not be sticky on mobile")
+    if not toc:
+        problems.append(f"{rel}: no left index (details.toc) found")
+        return problems
+    if toc["position"] != "sticky":
+        problems.append(f"{rel}: index is not sticky (position: {toc['position']})")
+    if toc["right"] > toc["mainLeft"]:
+        problems.append(f"{rel}: index is not to the left of the content")
+    if not 180 <= toc["width"] <= 360:
+        problems.append(f"{rel}: index width {toc['width']}px is out of range")
+    if toc["visibleLinks"] < 12:
+        problems.append(f"{rel}: only {toc['visibleLinks']} index links are visible")
+    if toc["summaryDisplay"] != "none":
+        problems.append(f"{rel}: the index summary should be hidden on desktop")
+    mobile_toc = mobile.get("toc")
+    if not mobile_toc or mobile_toc["summaryDisplay"] == "none":
+        problems.append(f"{rel}: the index should collapse into a disclosure on mobile")
+    elif mobile_toc["position"] != "static":
+        problems.append(f"{rel}: the collapsed index should not be sticky on mobile")
     return problems
 
 
@@ -153,19 +182,19 @@ def main(argv: list[str]) -> int:
 
     docs = Path(args.docs)
     problems: list[str] = []
-    for name in PAGES:
-        page = docs / name
+    for rel in PAGES:
+        page = docs / rel
         if not page.is_file():
-            problems.append(f"{name}: missing")
+            problems.append(f"{rel}: missing")
             continue
-        problems.extend(check_page(page, browser))
+        problems.extend(check_page(page, browser, rel))
 
     if problems:
         print("layout check FAILED:")
-        for p in problems:
-            print(f"  - {p}")
+        for problem in problems:
+            print(f"  - {problem}")
         return 1
-    print(f"layout check OK: {len(PAGES)} page(s) at 1440px and 390px")
+    print(f"layout check OK: {len(PAGES)} pages at 1440px and 390px")
     return 0
 
 

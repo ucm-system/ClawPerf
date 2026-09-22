@@ -1,0 +1,89 @@
+<svg viewBox="0 0 941 460" width="941" xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-label="trace mode: use your own traffic as the workload — a trace file feeds either a simulated KV cache (hit rate, evictions) or an optional real replay (TTFT, TPOT)">
+  <style>
+    text { font-family: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', system-ui, sans-serif; }
+    .title { font-size: 16px; fill: #1e293b; font-weight: 600; }
+    .grouptitle { font-size: 11px; fill: #64748b; }
+    .boxtitle { font-size: 12px; font-weight: 600; }
+    .boxsub { font-size: 10px; }
+    .arrowlabel { font-size: 10px; fill: #64748b; }
+    .note { font-size: 10px; fill: #64748b; }
+    .group { fill: #f8fafc; stroke: #94a3b8; stroke-width: 1; stroke-dasharray: 6,4; }
+    .inputbox { fill: #dbeafe; stroke: #3b82f6; stroke-width: 1; }
+    .cachebox { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1; }
+    .databox { fill: #d1fae5; stroke: #22c55e; stroke-width: 1; }
+    .replaybox { fill: #fef3c7; stroke: #f59e0b; stroke-width: 1; }
+  </style>
+
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="2" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,0 L8,4 L0,8 L2,4 z" fill="#64748b"/>
+    </marker>
+    <marker id="arrow-orange" markerWidth="8" markerHeight="8" refX="2" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,0 L8,4 L0,8 L2,4 z" fill="#f59e0b"/>
+    </marker>
+  </defs>
+
+  <text class="title" x="470" y="36" text-anchor="middle">trace mode: use your own traffic as the workload</text>
+
+  <!-- ── Layer 1: dashed grouping box (Simulated KV cache): x=336, y=80, w=280, h=236, right=616, bottom=316 -->
+  <rect class="group" x="336" y="80" width="280" height="236" rx="10"/>
+  <text class="grouptitle" x="346" y="94">Simulated KV cache</text>
+
+  <!-- ── Layer 2: connectors ─────────────────────────────────────────── -->
+  <!-- Trace file right edge 250 → group left edge 336 (upper / simulation path) -->
+  <path d="M255,198 L 325,198" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text class="arrowlabel" x="293" y="178" text-anchor="middle">block hashes</text>
+
+  <!-- Group right edge 616 → hit rate box left edge 646 -->
+  <path d="M621,198 L 635,198" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- messages box right edge 250 → Real replay left edge 336 (lower / replay path, dashed amber) -->
+  <path d="M255,387 L 325,387" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="6,4"
+        marker-end="url(#arrow-orange)"/>
+
+  <!-- Real replay right edge 616 → TTFT / TPOT left edge 646 -->
+  <path d="M621,387 L 635,387" fill="none" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#arrow-orange)"/>
+
+  <!-- ── Layer 3: boxes and text ─────────────────────────────────────── -->
+  <!-- Trace file: x=25, y=162, w=225, h=72, right=250, bottom=234, centre y=198 -->
+  <rect class="inputbox" x="25" y="162" width="225" height="72" rx="6"/>
+  <text class="boxtitle" x="137.5" y="183" text-anchor="middle" fill="#1e40af">Trace file</text>
+  <text class="boxsub" x="137.5" y="201" text-anchor="middle" fill="#1e40af">kvcache.ai JSONL</text>
+  <text class="boxsub" x="137.5" y="219" text-anchor="middle" fill="#1e40af">{hash_ids, input_length, block_size?}</text>
+
+  <!-- Simulated KV cache internals: x=354, w=244, right=598 -->
+  <rect class="cachebox" x="354" y="104" width="244" height="54" rx="6"/>
+  <text class="boxtitle" x="476" y="125" text-anchor="middle" fill="#1e293b">block table</text>
+  <text class="boxsub" x="476" y="143" text-anchor="middle" fill="#64748b">content-addressed blocks</text>
+
+  <rect class="cachebox" x="354" y="174" width="244" height="54" rx="6"/>
+  <text class="boxtitle" x="476" y="195" text-anchor="middle" fill="#1e293b">budget</text>
+  <text class="boxsub" x="476" y="213" text-anchor="middle" fill="#64748b">--cache-budget-tokens / --cache-budget-gb</text>
+
+  <rect class="cachebox" x="354" y="244" width="244" height="54" rx="6"/>
+  <text class="boxtitle" x="476" y="265" text-anchor="middle" fill="#1e293b">eviction</text>
+  <text class="boxsub" x="476" y="283" text-anchor="middle" fill="#64748b">LRU or FIFO</text>
+
+  <!-- Simulation result: x=646, y=171, w=270, h=54 -->
+  <rect class="databox" x="646" y="171" width="270" height="54" rx="6"/>
+  <text class="boxtitle" x="781" y="192" text-anchor="middle" fill="#166534">hit rate · evictions</text>
+  <text class="boxsub" x="781" y="210" text-anchor="middle" fill="#166534">--budget-sweep finds where returns flatten</text>
+
+  <!-- Lower path: messages in the trace -->
+  <rect class="inputbox" x="25" y="369" width="225" height="36" rx="6"/>
+  <text class="boxtitle" x="137.5" y="391" text-anchor="middle" fill="#1e40af">messages in the trace</text>
+
+  <!-- Real replay: x=336, y=360, w=280, h=54 -->
+  <rect class="replaybox" x="336" y="360" width="280" height="54" rx="6"/>
+  <text class="boxtitle" x="476" y="381" text-anchor="middle" fill="#b45309">Real replay</text>
+  <text class="boxsub" x="476" y="399" text-anchor="middle" fill="#b45309">send the actual requests to --endpoint</text>
+
+  <!-- Replay result: x=646, y=360, w=270, h=54 -->
+  <rect class="databox" x="646" y="360" width="270" height="54" rx="6"/>
+  <text class="boxtitle" x="781" y="391" text-anchor="middle" fill="#166534">TTFT / TPOT for that exact workload</text>
+
+  <!-- Annotations for the two paths -->
+  <text class="note" x="293" y="432" text-anchor="middle">optional — only when the trace carries messages</text>
+  <text class="note" x="631" y="432" text-anchor="middle">--model-context-length clamps output so requests fit the window</text>
+</svg>

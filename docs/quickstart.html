@@ -3,13 +3,13 @@
 <head>
 <meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
-<title>LLM serving benchmarks under real agent workloads — ClawPerf</title>
-<meta name='description' content='ClawPerf benchmarks LLM serving under real agent workloads: seven modes, one CLI.'>
-<link rel='canonical' href='https://ucm-system.github.io/ClawPerf/'>
+<title>Quick start — ClawPerf</title>
+<meta name='description' content='Install ClawPerf, run the default scenario mode and read the output.'>
+<link rel='canonical' href='https://ucm-system.github.io/ClawPerf/quickstart.html'>
 <meta property='og:type' content='website'>
-<meta property='og:title' content='LLM serving benchmarks under real agent workloads — ClawPerf'>
-<meta property='og:description' content='ClawPerf benchmarks LLM serving under real agent workloads: seven modes, one CLI.'>
-<meta property='og:url' content='https://ucm-system.github.io/ClawPerf/'>
+<meta property='og:title' content='Quick start — ClawPerf'>
+<meta property='og:description' content='Install ClawPerf, run the default scenario mode and read the output.'>
+<meta property='og:url' content='https://ucm-system.github.io/ClawPerf/quickstart.html'>
 <meta name='theme-color' content='#0f172a'>
 <link rel='icon' href='data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f172a'/%3E%3Cg fill='%2338bdf8'%3E%3Crect x='7' y='17' width='4' height='8' rx='1'/%3E%3Crect x='14' y='12' width='4' height='13' rx='1'/%3E%3Crect x='21' y='7' width='4' height='18' rx='1'/%3E%3C/g%3E%3C/svg%3E'>
 <style>
@@ -249,6 +249,13 @@
 <a class='lvl1' href='configuration.html'><span class='num'>4</span><span class='en'>Configuration</span><span class='zh'>配置</span></a>
 <a class='lvl1' href='reference.html'><span class='num'>5</span><span class='en'>Reference</span><span class='zh'>完整参考</span></a>
 <div class='sep'></div>
+<a class='lvl2' href='#install'><span class='en'>On this page</span><span class='zh'>本页目录</span></a>
+<a class='lvl3' href='#install'><span class='en'>Install</span><span class='zh'>安装</span></a>
+<a class='lvl3' href='#first-run'><span class='en'>First run</span><span class='zh'>首次运行</span></a>
+<a class='lvl3' href='#output'><span class='en'>Reading the output</span><span class='zh'>怎么读输出</span></a>
+<a class='lvl3' href='#nogpu'><span class='en'>No GPU? Mock server</span><span class='zh'>没有 GPU？</span></a>
+<a class='lvl3' href='#exit'><span class='en'>Exit codes</span><span class='zh'>退出码</span></a>
+<div class='sep'></div>
 <a class='lvl2' href='https://github.com/ucm-system/ClawPerf'><span class='en'>GitHub</span><span class='zh'>GitHub</span></a>
 <a class='lvl2' href='reference.html#params'><span class='en'>All parameters</span><span class='zh'>全部参数</span></a>
 <a class='lvl2' href='reference.html#trouble'><span class='en'>Troubleshooting</span><span class='zh'>故障排查</span></a>
@@ -256,113 +263,157 @@
   </details>
   <main>
 <div class='wrap' style='padding-top:34px'>
-  <p class='eyebrow'><span class='en'>LLM serving benchmarks</span><span class='zh'>LLM 推理服务基准</span></p>
-  <h1>ClawPerf</h1>
-  <p class='lead'><span class='en'>Benchmark LLM serving under <b>real agent workloads</b> — multi-turn, long-context, prefix-cache-heavy traffic. Seven modes, one CLI, built on <a href='https://github.com/modelscope/evalscope'>EvalScope</a>.</span><span class='zh'>面向 <b>真实 Agent 负载</b>的 LLM 推理服务性能基准 —— 多轮对话、长上下文、前缀缓存密集的流量。七种模式，一个 CLI，构建在 <a href='https://github.com/modelscope/evalscope'>EvalScope</a> 之上。</span></p>
-  <div class='next'>
-    <a class='btn primary' href='quickstart.html'><span class='en'>Quick start</span><span class='zh'>快速开始</span></a>
-    <a class='btn' href='reference.html'><span class='en'>Full reference</span><span class='zh'>完整参考</span></a>
-    <a class='btn' href='https://github.com/ucm-system/ClawPerf'>GitHub</a>
-    <a class='btn' href='https://github.com/ucm-system/ClawPerf/releases'><span class='en'>Releases &amp; images</span><span class='zh'>发行版与镜像</span></a>
-  </div>
+  <p class='eyebrow'><span class='en'>Quick start</span><span class='zh'>快速开始</span></p>
+  <h1><span class='en'>From zero to a benchmark in one command</span><span class='zh'>一条命令跑起第一个基准</span></h1>
+  <p class='lead'><span class='en'>The default mode is <code class='inline'>scenario</code>: N users holding independent conversations that grow turn by turn. You need a running OpenAI-compatible endpoint and a tokenizer directory.</span><span class='zh'>默认模式是 <code class='inline'>scenario</code>：N 个用户各自进行不断增长的多轮会话。只需要一个正在运行的 OpenAI 兼容端点和一个 tokenizer 目录。</span></p>
+
+  <h2 id='install'><span class='en'>Install</span><span class='zh'>安装</span></h2>
+  <div class='sample'>
+  <div class='sample-head'><span class='sample-title'>shell</span><button class='copy' type='button' data-copy>Copy</button></div>
+  <pre><code><span class='cmt'>#</span> pip (the extras pull in the agent, record/replay and mock-server bits)
+pip install "clawperf[agent,record,replay,mock-server]"
+
+<span class='cmt'>#</span> or the container image — it bundles examples/ and a local tokenizer
+docker pull ghcr.io/ucm-system/clawperf:latest</code></pre>
 </div>
 
-<div class='wrap' style='margin-top:36px'>
-  <h2><span class='en'>First run</span><span class='zh'>首次运行</span></h2>
-  <p class='sub'><span class='en'>The default mode is <code class='inline'>scenario</code>: N users holding independent conversations that grow turn by turn. Point <code class='inline'>--tokenizer</code> at a local directory — it is loaded strictly offline.</span><span class='zh'>默认模式是 <code class='inline'>scenario</code>：N 个用户各自进行不断增长的多轮会话。把 <code class='inline'>--tokenizer</code> 指向本地目录 —— 它会严格离线加载。</span></p>
+  <h2 id='first-run'><span class='en'>First run</span><span class='zh'>首次运行</span></h2>
   <div class='sample'>
   <div class='sample-head'><span class='sample-title'>bash</span><button class='copy' type='button' data-copy>Copy</button></div>
   <pre><code>clawperf <span class='flag'>--mode</span> scenario \
-  <span class='flag'>--endpoint</span> http://localhost:8000/v1 <span class='flag'>--model</span> Qwen3-0.6B \
+  <span class='flag'>--endpoint</span> http://localhost:8000/v1 \
+  <span class='flag'>--model</span> Qwen3-0.6B \
   <span class='flag'>--tokenizer</span> /mnt/model/Qwen3-0.6B \
-  <span class='flag'>--context-profile</span> medium <span class='flag'>--num-users</span> 8 <span class='flag'>--max-turns</span> 20 \
+  <span class='flag'>--context-profile</span> medium \
+  <span class='flag'>--num-users</span> 8 <span class='flag'>--max-turns</span> 20 \
   <span class='flag'>--metrics-endpoint</span> http://localhost:8000/metrics \
   <span class='flag'>--output</span> results.json</code></pre>
 </div>
-  <div class='next'>
-    <a class='btn primary' href='quickstart.html'><span class='en'>Quick start</span><span class='zh'>快速开始</span></a>
-    <a class='btn' href='configuration.html'><span class='en'>Context profiles &amp; knobs</span><span class='zh'>档位与旋钮</span></a>
-  </div>
-</div>
+  <p class='note'><span class='en'><b>Point <code class='inline'>--tokenizer</code> at a local directory.</b> It is loaded strictly offline (no hub lookup, no download) and drives exact token counting, context clamping and content generation. Use the same directory your server loaded the model from — or the image's bundled <code class='inline'>/app/tokenizers/qwen3-0.6b</code> to sanity-check the setup.</span><span class='zh'><b>把 <code class='inline'>--tokenizer</code> 指向本地目录。</b>它会严格离线加载（不查 hub、不下载），并负责精确分词、上下文裁剪与内容生成。指向服务端加载模型的同一个目录即可 —— 也可以先用镜像内置的 <code class='inline'>/app/tokenizers/qwen3-0.6b</code> 验证环境。</span></p>
 
-<div class='wrap' style='margin-top:36px'>
-  <div class='grid c3'>
-    <div class='card'><h3><span class='en'>7 modes</span><span class='zh'>7 种模式</span></h3>
-      <p><span class='en'>Each answers a different question — see the map below.</span><span class='zh'>每种回答一个不同的问题 —— 见下方模式地图。</span></p></div>
-    <div class='card'><h3><span class='en'>4 backends</span><span class='zh'>4 种后端</span></h3>
-      <p><span class='en'>vLLM · SGLang · MindIE · vllm-ascend, with per-backend metric mapping.</span><span class='zh'>vLLM · SGLang · MindIE · vllm-ascend，指标映射按后端区分。</span></p></div>
-    <div class='card'><h3>amd64 + arm64</h3>
-      <p><span class='en'>Native multi-arch images, plus a mock server so CI needs no GPU.</span><span class='zh'>原生双架构镜像，另带 mock server，CI 无需 GPU。</span></p></div>
-  </div>
-</div>
-
-<div class='wrap' style='margin-top:36px'>
-  <h2><span class='en'>Pick the question you need answered</span><span class='zh'>按你要回答的问题选模式</span></h2>
-  <p class='sub'><span class='en'>Every mode writes a JSON result plus a Markdown report with a verdict. Each one has its own page: why it exists, a diagram, the command, the parameters and a real run.</span><span class='zh'>每种模式都会产出 JSON 结果与带结论的 Markdown 报告。每种模式一个页面：为什么做、示意图、命令、参数与一次真实运行。</span></p>
-  <div class='grid c2'><a class='card card-link' href='modes/scenario.html'><b><code>scenario</code></b><span class='en'>The core agentic-load simulator</span><span class='zh'>核心 Agent 负载模拟器</span></a><a class='card card-link' href='modes/hitrate.html'><b><code>hitrate</code></b><span class='en'>Is the prefix cache actually working?</span><span class='zh'>前缀缓存到底有没有生效？</span></a><a class='card card-link' href='modes/slo.html'><b><code>slo</code></b><span class='en'>Turn latency budgets into a capacity number</span><span class='zh'>把时延预算变成容量数字</span></a><a class='card card-link' href='modes/agent.html'><b><code>agent</code></b><span class='en'>Let the model actually work</span><span class='zh'>让模型真的干活</span></a><a class='card card-link' href='modes/trace.html'><b><code>trace</code></b><span class='en'>Use your own traffic as the workload</span><span class='zh'>用你自己的流量当负载</span></a><a class='card card-link' href='modes/record-replay.html'><b><code>record &amp; replay</code></b><span class='en'>Capture once, replay anywhere</span><span class='zh'>录一次，随处回放</span></a></div>
-</div>
-
-<div class='wrap' style='margin-top:36px'>
-  <h2><span class='en'>One runner, seven workloads</span><span class='zh'>一个 Runner，七种负载</span></h2>
-  <figure class='diagram'>
-  <img loading='lazy' src='assets/pipeline.svg' alt='ClawPerf pipeline: the workload modes drive a runner that sends requests to a serving backend and polls its metrics'>
-  <figcaption><span class='en'>The same runner drives every mode: it generates the workload, sends it, polls the backend's Prometheus endpoint and writes the JSON result plus the Markdown verdict.</span><span class='zh'>所有模式共用同一个 Runner：生成负载、发送请求、抓取后端的 Prometheus 指标，并写出 JSON 结果与 Markdown 结论。</span></figcaption>
-</figure>
-</div>
-
-<div class='wrap' style='margin-top:36px'>
-  <h2><span class='en'>Measured, not claimed</span><span class='zh'>实测数据，而非宣传</span></h2>
-  <p class='sub'><span class='en'>From the end-to-end run in <a href='https://github.com/ucm-system/ClawPerf/blob/main/docs/E2E_TEST_REPORT.md'>docs/E2E_TEST_REPORT.md</a>: vLLM-Ascend v0.23.0, Qwen3-0.6B, one Ascend 910B3.</span><span class='zh'>数据来自 <a href='https://github.com/ucm-system/ClawPerf/blob/main/docs/E2E_TEST_REPORT.md'>docs/E2E_TEST_REPORT.md</a> 的端到端测试：vLLM-Ascend v0.23.0 + Qwen3-0.6B，单张昇腾 910B3。</span></p>
-  <div class='grid c3'>
-    <div class='card'><h3><span class='en'>Hit rate is verifiable</span><span class='zh'>命中率可验证</span></h3>
-      <p><span class='en'><b>49.90%</b> measured against a <b>50.00%</b> target — 40 requests, 2 distinct prefixes, concurrency 4.</span><span class='zh'>目标 <b>50.00%</b>，实测 <b>49.90%</b> —— 40 个请求、2 个不同前缀、并发 4。</span></p></div>
-    <div class='card'><h3><span class='en'>Real traces reuse a lot</span><span class='zh'>真实 trace 复用率很高</span></h3>
-      <p><span class='en'><b>90.42%</b> prefix-reuse ceiling over 34 real Claude Code requests; replay of the fitting requests succeeded <b>29/29</b>.</span><span class='zh'>34 个真实 Claude Code 请求的复用上限 <b>90.42%</b>；可容纳的请求回放 <b>29/29</b> 成功。</span></p></div>
-    <div class='card'><h3><span class='en'>Capacity is a number</span><span class='zh'>容量是一个确定的数</span></h3>
-      <p><span class='en'><b>5 users</b> sustained under <code class='inline'>ttft.p99≤1500ms</code>, <code class='inline'>tpot.avg≤30ms</code>, <code class='inline'>e2e.max≤20s</code>.</span><span class='zh'>在 <code class='inline'>ttft.p99≤1500ms</code>、<code class='inline'>tpot.avg≤30ms</code>、<code class='inline'>e2e.max≤20s</code> 下可稳定支撑 <b>5 个用户</b>。</span></p></div>
-  </div>
-  <h3><span class='en'>A real SLO sweep</span><span class='zh'>一次真机 SLO 扫描</span></h3>
-  <p class='sub'><span class='en'>Real vLLM-Ascend 910B3 SLO sweep (Qwen3-0.6B, 32K window).</span><span class='zh'>真机 vLLM-Ascend 910B3 SLO 扫描（Qwen3-0.6B，32K 窗口）。</span></p>
+  <h2 id='output'><span class='en'>Reading the output</span><span class='zh'>怎么读输出</span></h2>
+  <p class='sub'><span class='en'>A live run against the bundled mock server (no GPU needed) — everything below the banner uses the same code path as a real endpoint.</span><span class='zh'>以下是在内置 mock server 上的实跑（无需 GPU）—— 横幅以下走的是与真实端点完全相同的代码路径。</span></p>
   <div class='sample'>
-  <div class='sample-head'><span class='sample-title'>$ clawperf report D:\Project\ClawPerf\results_e2e\slo.json <span class='flag'>--print</span></span><button class='copy' type='button' data-copy>Copy</button></div>
-  <pre><code>Report saved to: D:\Project\ClawPerf\results_e2e\slo.md
-<span class='head'># ClawPerf Benchmark Report</span>
-<span class='rule'>| Field | Value |</span>
-<span class='rule'>| Model | `qwen3` |</span>
-<span class='rule'>| Endpoint | `http://110.138.0.3:9155/v1` |</span>
-<span class='rule'>| Backend | vllm |</span>
-<span class='rule'>| Mode | `slo` |</span>
-<span class='rule'>| SLO | ttft.p99&lt;=1500ms, tpot.avg&lt;=30ms, e2e.max&lt;=20000ms |</span>
-<span class='rule'>| Max Users | 5 |</span>
-<span class='rule'>| Setup Time | 34.69s |</span>
-<span class='rule'>| Bench Time | 394.06s |</span>
-<span class='ok'>## Verdict: ✅ GOOD</span>
-- **Max sustained users:** 5
-<span class='head'>## Key Findings</span>
-- Max sustained users meeting SLO: 5
-- SLO criteria: ttft.p99&lt;=1500ms, tpot.avg&lt;=30ms, e2e.max&lt;=20000ms
-<span class='head'>## Summary</span>
-<span class='err'>| Users | ttft.p99 | tpot.avg | e2e.max | Error | SLO |</span>
-<span class='ok'>| 1 | 228ms | 9ms | 8888ms | 0.0% | ✅ |</span>
-<span class='ok'>| 2 | 259ms | 9ms | 9090ms | 0.0% | ✅ |</span>
-<span class='ok'>| 4 | 624ms | 15ms | 15.5s | 0.0% | ✅ |</span>
-<span class='ok'>| 5 | 768ms | 15ms | 16.0s | 0.0% | ✅ |</span>
-<span class='err'>| 6 | 945ms | 21ms | 22.4s | 0.0% | ❌ |</span>
-<span class='err'>| 8 | 822ms | 25ms | 26.6s | 0.0% | ❌ |</span>
-<span class='head'>## Methodology</span>
-&lt;details&gt;
-&lt;summary&gt;Click to expand&lt;/summary&gt;
-- **TTFT** (Time to First Token): wall time from request send to first content chunk on the wire.
-- **TPOT** (Time Per Output Token): decode time / output tokens, excluding prefill.
-- **ITL** (Inter-Token Latency): gap between consecutive output chunks.
-- **Prefix cache hit rate**: token-level, read from the backend's Prometheus counters (start/end delta). Not
-  request-level.
-<span class='ok'>- **Verdict thresholds**: TTFT GOOD ≤3s / OK ≤10s; throughput GOOD ≥30 tok/s / OK ≥15 tok/s.</span>
-- **Compaction**: when context exceeds ``max_context_tokens``, history is cleared and the user prefix is incremented.
-- **Decode throughput** isolates generation speed from prefill (excludes TTFT).
-- **Wall-clock per-user throughput** uses real start/end timestamps, not summed per-request latencies.
-&lt;/details&gt;</code></pre>
+  <div class='sample-head'><span class='sample-title'>$ clawperf <span class='flag'>--mode</span> scenario <span class='flag'>--endpoint</span> http://127.0.0.1:18095/v1/chat/completions <span class='flag'>--model</span> \
+    qwen3-0.6b <span class='flag'>--tokenizer</span> tokenizers/qwen3-0.6b <span class='flag'>--context-profile</span> fresh <span class='flag'>--num-users</span> 4 \
+    <span class='flag'>--max-turns</span> 4 <span class='flag'>--output-tokens-per-turn</span> 48 <span class='flag'>--metrics-endpoint</span> \
+    http://127.0.0.1:18095/metrics <span class='flag'>--reset-cache</span> <span class='flag'>--output</span> results.json</span><button class='copy' type='button' data-copy>Copy</button></div>
+  <pre><code>======================================================================
+ClawPerf - LLM Serving Performance Benchmark
+  (Powered by EvalScope perf infrastructure)
+======================================================================
+  Model:        qwen3-0.6b
+  Endpoint:     http://127.0.0.1:18095/v1/chat/completions
+  Backend:      vllm
+  Users:        4 (arrival: burst)
+  Max Turns:    4
+  Context:      sys=4000, usr=1500, in=1500, out=48
+  Max Context:  128000 tokens
+  Ignore EOS:   True
+  Tokenizer:    D:\Project\ClawPerf\tokenizers\qwen3-0.6b
+  Metrics:      http://127.0.0.1:18095/metrics
+  History:      clawperf_history.jsonl (append)
+======================================================================
+<span class='log'>INFO:clawperf:Loaded local tokenizer from D:\Project\ClawPerf\tokenizers\qwen3-0.6b [local dir (transformers)] —</span>
+  vocab=151669, chat_template=yes
+<span class='log'>INFO:clawperf:Pre-flight check: probing http://127.0.0.1:18095/v1/chat/completions ...</span>
+<span class='log'>INFO:clawperf:Pre-flight check OK (attempt 1/3).</span>
+<span class='log'>INFO:clawperf:Generating system prefix (4000 tokens)...</span>
+<span class='log'>INFO:clawperf:Generating user prefix content (1500 tokens/user)...</span>
+<span class='log'>INFO:clawperf:Generating per-turn input (1500 tokens)...</span>
+<span class='log'>INFO:clawperf:Metrics start snapshot: query=1 hit=0 ext_query=1 ext_hit=0 engines=['0'] ext_engines=['0']</span>
+<span class='warn'>WARNING:clawperf:Prefix cache reset endpoint http://127.0.0.1:18095/reset_prefix_cache not found (404) — this backend</span>
+  doesn't expose cache reset. Continuing without a clean baseline; measured hit rate may include residual prefixes.
+<span class='log'>INFO:clawperf:Setup complete in 3.62s — starting benchmark</span>
+<span class='log'>INFO:clawperf:Starting benchmark: 4 users, arrival=burst</span>
+Benchmark: 100%|██████████| 16/16 [00:00&lt;00:00, 35.08turn/s]
+<span class='log'>INFO:clawperf:Metrics end snapshot: query=181,377 hit=139,989 ext_query=8,552 ext_hit=0 engines=['0']</span>
+  ext_engines=['0']
+<span class='log'>INFO:clawperf:History appended to: clawperf_history.jsonl</span>
+<span class='log'>INFO:clawperf:Markdown report saved to: C:\Users\keriko\AppData\Local\Temp\sample_scenario.md</span>
+======================================================================
+ClawPerf - Benchmark Complete
+======================================================================
+  Common Metrics
+<span class='rule'>+--------------------------------------+-----------------+</span>
+<span class='rule'>| Metric                               |           Value |</span>
+<span class='rule'>+--------------------------------------+-----------------+</span>
+<span class='rule'>| Setup Time                           |          3.62 s |</span>
+<span class='rule'>| Duration                             |          0.45 s |</span>
+<span class='rule'>| Total Requests                       |              16 |</span>
+<span class='rule'>| Success Requests                     |              16 |</span>
+<span class='rule'>| Failed Requests                      |               0 |</span>
+<span class='rule'>| Total Input Tokens                   |         181,376 |</span>
+<span class='rule'>| Prefill Token Throughput             | 400388.52 tok/s |</span>
+<span class='rule'>| Total Output Tokens                  |             768 |</span>
+<span class='rule'>| Request Throughput                   |   35.3201 req/s |</span>
+<span class='rule'>| Output Token Throughput              |   1695.36 tok/s |</span>
+<span class='rule'>| Decode Throughput (excl prefill)     |   4258.54 tok/s |</span>
+<span class='rule'>| Total Token Throughput               | 402083.89 tok/s |</span>
+<span class='rule'>| Total Compactions                    |               0 |</span>
+<span class='rule'>| HBM Prefix Cache Token Hit Rate      |          77.18% |</span>
+<span class='rule'>| HBM Prefix Cache Hit Tokens          |         139,989 |</span>
+<span class='rule'>| HBM Prefix Cache Query Tokens        |         181,376 |</span>
+<span class='rule'>| External Prefix Cache Token Hit Rate |           0.00% |</span>
+<span class='rule'>| External Prefix Cache Hit Tokens     |               0 |</span>
+<span class='rule'>| External Prefix Cache Query Tokens   |           8,551 |</span>
+<span class='rule'>+--------------------------------------+-----------------+</span></code></pre>
 </div>
+  <div class='grid c2'>
+    <div class='card'><h3><span class='en'>The four numbers that matter</span><span class='zh'>四个关键数字</span></h3>
+      <p><span class='en'><b>TTFT</b> — time to first token. <b>TPOT</b> — per output token. <b>E2E</b> — full request latency. <b>Hit rate</b> — read from the server's Prometheus counters, never inferred.</span><span class='zh'><b>TTFT</b> —— 首 token 时延。<b>TPOT</b> —— 每输出 token。<b>E2E</b> —— 请求端到端时延。<b>命中率</b> —— 直接读服务端 Prometheus 计数器，从不推断。</span></p></div>
+    <div class='card'><h3><span class='en'>Two artifacts per run</span><span class='zh'>每次运行两个产物</span></h3>
+      <p><span class='en'><code class='inline'>results.json</code> (config + per-user/per-turn detail + metrics) and <code class='inline'>results.md</code> (verdict, findings, ASCII charts). Regenerate the report with <code class='inline'>clawperf report results.json</code>.</span><span class='zh'><code class='inline'>results.json</code>（配置 + 按用户/按轮明细 + 指标）与 <code class='inline'>results.md</code>（结论、发现、ASCII 图表）。可用 <code class='inline'>clawperf report results.json</code> 重新生成报告。</span></p></div>
+  </div>
+
+  <h2 id='nogpu'><span class='en'>No GPU at hand?</span><span class='zh'>手边没有 GPU？</span></h2>
+  <p class='sub'><span class='en'>Ship the mock server instead: it has a real trie prefix cache and vLLM-style <code class='inline'>/metrics</code>, so every mode works end to end.</span><span class='zh'>用内置 mock server 替代：它带真实的字典树前缀缓存与 vLLM 风格 <code class='inline'>/metrics</code>，所有模式都能跑通。</span></p>
+  <div class='sample'>
+  <div class='sample-head'><span class='sample-title'>bash</span><button class='copy' type='button' data-copy>Copy</button></div>
+  <pre><code><span class='cmt'>#</span> terminal 1
+clawperf-mock-server <span class='flag'>--port</span> 8000
+
+<span class='cmt'>#</span> terminal 2 — the same command, now pointed at the mock
+clawperf <span class='flag'>--mode</span> scenario <span class='flag'>--endpoint</span> http://localhost:8000/v1 \
+  <span class='flag'>--model</span> qwen3-0.6b <span class='flag'>--tokenizer</span> tokenizers/qwen3-0.6b \
+  <span class='flag'>--context-profile</span> fresh <span class='flag'>--num-users</span> 4 <span class='flag'>--max-turns</span> 4 \
+  <span class='flag'>--metrics-endpoint</span> http://localhost:8000/metrics <span class='flag'>--reset-cache</span></code></pre>
+</div>
+
+  <h2 id='exit'><span class='en'>Exit codes &amp; troubleshooting</span><span class='zh'>退出码与故障排查</span></h2>
+  <div class='tbl-scroll'><table>
+    <thead><tr><th><span class='en'>Code</span><span class='zh'>退出码</span></th><th><span class='en'>Meaning</span><span class='zh'>含义</span></th></tr></thead>
+    <tbody>
+      <tr><td><code class='inline'>0</code></td><td><span class='en'>the benchmark ran; results written</span><span class='zh'>基准跑完并写出结果</span></td></tr>
+      <tr><td><code class='inline'>1</code></td><td><span class='en'>configuration or pre-flight error (no benchmark ran)</span><span class='zh'>配置或预检错误（未开始跑基准）</span></td></tr>
+      <tr><td><code class='inline'>2</code></td><td><span class='en'>the benchmark ran but <b>every</b> request failed (CI gate)</span><span class='zh'>基准跑了但<b>全部</b>请求失败（CI 门禁）</span></td></tr>
+      <tr><td><code class='inline'>3</code></td><td><span class='en'>interrupted (Ctrl+C); partial results are written</span><span class='zh'>被中断（Ctrl+C）；退出前会写出部分结果</span></td></tr>
+    </tbody>
+  </table></div>
+  <p class='sub'><span class='en'>The full troubleshooting table — tokenizer paths, the SLO shell trap, the pre-flight probe — lives in the <a href='reference.html#trouble'>reference</a>.</span><span class='zh'>完整的故障排查表（tokenizer 路径、SLO 引号陷阱、预检探针）在<a href='reference.html#trouble'>完整参考</a>里。</span></p>
+  <div class='sample'>
+  <div class='sample-head'><span class='sample-title'>$ clawperf <span class='flag'>--mode</span> slo ... <span class='flag'>--slo</span> ttft.p99</span><button class='copy' type='button' data-copy>Copy</button></div>
+  <pre><code><span class='cmd'>$ clawperf --mode slo --endpoint http://141.111.32.62:8000/v1 \</span>
+    --model /mnt/model/Qwen3.5-0.8B --tokenizer /mnt/model/Qwen3.5-0.8B \
+    --slo ttft.p99&lt;=10000 --slo tpot.avg&lt;=50 --slo e2e.max&lt;=30000
+bash: =10000: No such file or directory
+        ^ bash treated '&lt;' as a redirection, so ClawPerf never started
+
+<span class='cmd'>$ # the same constraints, written so the shell cannot eat them:</span>
+<span class='cmd'>$ clawperf --mode slo ... --slo ttft.p99:10000 --slo tpot.avg:50 --slo e2e.max:30000</span>
+
+<span class='cmd'>$ # and if a bare metric name does reach ClawPerf:</span>
+<span class='warn'>[ClawPerf] configuration error: invalid SLO constraint 'ttft.p99': no operator or threshold found after the metric.</span>
+  If you wrote --slo ttft.p99&lt;=1500 without quotes, your shell consumed '&lt;' as a redirection and ClawPerf only
+  received 'ttft.p99' — quote it (--slo 'ttft.p99&lt;=1500') or use the shell-safe form --slo ttft.p99:1500. expected
+  '&lt;metric&gt;.&lt;agg&gt;&lt;op&gt;&lt;value_ms&gt;', e.g. ttft.p99&lt;=1500, tpot.avg&lt;=30, e2e.max&lt;=30000 (metrics: ttft|tpot|e2e; aggs:
+  avg|min|max|p25|p50|p75|p90|p95|p99|p99.9; ops: &lt;=|&lt;|&gt;=|&gt;). In a shell, '&lt;' and '&gt;' are redirection operators —
+  quote the spec (--slo 'ttft.p99&lt;=1500') or use the shell-safe separator form --slo ttft.p99:1500 (':' or '=' means
+  '&lt;=', and 'ttft.p99:le:1500' / 'ttft.p99:ge:1500' spell out the operator).</code></pre>
+</div>
+  <div class='next'>
+    <a class='btn primary' href='modes/scenario.html'><span class='en'>Next: the modes, in depth</span><span class='zh'>下一步：模式详解</span></a>
+  </div>
 </div>
   </main>
 </div>

@@ -12,7 +12,7 @@ on:
       - "docs/**"
       - "src/clawperf/**"
       - "scripts/check_site.py"
-      - "scripts/gen_reference.py"
+      - "scripts/gen_site.py"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -48,7 +48,7 @@ jobs:
       - name: The reference page matches the CLI
         # docs/reference.html lists every flag with its help text and default;
         # if it drifts from clawperf --help the site would quietly lie.
-        run: python3 scripts/gen_reference.py --check
+        run: python3 scripts/gen_site.py --check
 
       - name: Layout check in real Chrome
         # Verifies the rendered page: left index present and sticky, headings

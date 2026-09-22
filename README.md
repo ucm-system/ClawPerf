@@ -43,25 +43,64 @@ Built on [EvalScope](https://github.com/modelscope/evalscope)'s perf infrastruct
 
 ## Real output
 
-Terminal captures of commands that really ran. The first is generated from a committed result file
-produced on a **vLLM-Ascend 910B3** (Qwen3-0.6B, 32K window); the second is a live run against the
-bundled mock server, so you can reproduce it on any laptop without a GPU.
+The docs site has **one page per mode**, each with a diagram, the command, the parameters that
+matter, a real captured run and how to read it:
 
-**SLO capacity sweep on real hardware** — `clawperf report results_e2e/slo.json --print`:
+| Mode | Page |
+|------|------|
+| `scenario` | [growing conversations under load](https://ucm-system.github.io/ClawPerf/modes/scenario.html) |
+| `hitrate` | [is the prefix cache actually working?](https://ucm-system.github.io/ClawPerf/modes/hitrate.html) |
+| `slo` | [capacity under a latency budget](https://ucm-system.github.io/ClawPerf/modes/slo.html) |
+| `agent` | [real tool-calling work](https://ucm-system.github.io/ClawPerf/modes/agent.html) |
+| `trace` | [your own traffic as the workload](https://ucm-system.github.io/ClawPerf/modes/trace.html) |
+| `record` & `replay` | [capture once, replay anywhere](https://ucm-system.github.io/ClawPerf/modes/record-replay.html) |
 
-![clawperf SLO sweep report: capacity curve with ttft.p99 / tpot.avg / e2e.max per concurrency level, verdict GOOD, max sustained users 5](docs/shots/slo.png)
+A real SLO sweep on a **vLLM-Ascend 910B3** (Qwen3-0.6B, 32K window) — the output of
+`clawperf report results_e2e/slo.json --print`:
 
-**A live multi-turn scenario run** — banner, pre-flight probe, progress and the summary tables:
+```
+Report saved to: D:\Project\ClawPerf\results_e2e\slo.md
+# ClawPerf Benchmark Report
+| Field | Value |
+| Model | `qwen3` |
+| Endpoint | `http://110.138.0.3:9155/v1` |
+| Backend | vllm |
+| Mode | `slo` |
+| SLO | ttft.p99<=1500ms, tpot.avg<=30ms, e2e.max<=20000ms |
+| Max Users | 5 |
+| Setup Time | 34.69s |
+| Bench Time | 394.06s |
+## Verdict: ✅ GOOD
+- **Max sustained users:** 5
+## Key Findings
+- Max sustained users meeting SLO: 5
+- SLO criteria: ttft.p99<=1500ms, tpot.avg<=30ms, e2e.max<=20000ms
+## Summary
+| Users | ttft.p99 | tpot.avg | e2e.max | Error | SLO |
+| 1 | 228ms | 9ms | 8888ms | 0.0% | ✅ |
+| 2 | 259ms | 9ms | 9090ms | 0.0% | ✅ |
+| 4 | 624ms | 15ms | 15.5s | 0.0% | ✅ |
+| 5 | 768ms | 15ms | 16.0s | 0.0% | ✅ |
+| 6 | 945ms | 21ms | 22.4s | 0.0% | ❌ |
+| 8 | 822ms | 25ms | 26.6s | 0.0% | ❌ |
+## Methodology
+<details>
+<summary>Click to expand</summary>
+- **TTFT** (Time to First Token): wall time from request send to first content chunk on the wire.
+- **TPOT** (Time Per Output Token): decode time / output tokens, excluding prefill.
+- **ITL** (Inter-Token Latency): gap between consecutive output chunks.
+- **Prefix cache hit rate**: token-level, read from the backend's Prometheus counters (start/end delta). Not
+  request-level.
+- **Verdict thresholds**: TTFT GOOD ≤3s / OK ≤10s; throughput GOOD ≥30 tok/s / OK ≥15 tok/s.
+- **Compaction**: when context exceeds ``max_context_tokens``, history is cleared and the user prefix is incremented.
+- **Decode throughput** isolates generation speed from prefill (excludes TTFT).
+- **Wall-clock per-user throughput** uses real start/end timestamps, not summed per-request latencies.
+</details>
+```
 
-![live clawperf scenario run: resolved configuration, progress bar and result tables](docs/shots/live-run.png)
-
-**Prefix-cache hit rate** — TARGET vs MEASURED, read from the server's own Prometheus counters:
-
-![clawperf hit-rate report: target 70% versus measured hit rate, with the speedup it bought](docs/shots/hitrate.png)
-
-More captures — KV-cache budget sweep, the result tables, and the shell-quoting diagnostic — are on
-the [project site](https://ucm-system.github.io/ClawPerf/#shots). They are regenerated from real
-runs by `python scripts/gen_shots.py`.
+Every command shown in the docs is a real run: the report-derived blocks are regenerated from the
+committed `results_e2e/*.json` files, and the live ones from the bundled mock server, by
+`python scripts/gen_samples.py`.
 
 ## Installation
 

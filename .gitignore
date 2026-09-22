@@ -62,8 +62,6 @@ docs/superpowers/
 
 # Large images (use compressed jpg in docs instead)
 docs/*.png
-# …except the terminal screenshots: mostly flat colour, ~100 KB each
-!docs/shots/*.png
 # Temporary probe pages written by scripts/check_layout.py
 docs/__probe_*
 # Local model caches / tool markers
