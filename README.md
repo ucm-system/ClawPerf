@@ -460,21 +460,29 @@ One-time repository setup: **Settings → Actions → General → Workflow permi
 
 #### Making the image publicly pullable
 
-ghcr packages are **private by default**, so `docker pull` fails for anyone who is not logged in. The visibility switch lives on the package's own settings page — and *which* page depends on who owns the package:
+ghcr packages are **private by default**, so `docker pull` fails for anyone who is not logged in. The switch is on the package's own settings page:
 
-- Pushed by the workflow's `GITHUB_TOKEN` (what this repo does) → the package belongs to the **repository**:
-  `https://github.com/<owner>/<repo>/pkgs/container/clawperf` → **Package settings** → *Danger Zone* → **Change visibility** → Public.
-- Pushed with a personal access token → the package belongs to the **organization** instead, and GitHub does not allow changing its visibility at all; it has to be deleted and re-pushed with `GITHUB_TOKEN`.
+1. open the package landing page — for a package published by a repository's workflow that is the **repository-scoped** URL:
+   `https://github.com/<owner>/<repo>/pkgs/container/clawperf`
+   (reachable from the repository page's *Packages* section, or from the organization's *Packages* list)
+2. on the right-hand side click **Package settings**
+3. at the bottom, under **Danger Zone**, click **Change visibility** → **Public**
 
-Once public, it stays public across releases (visibility is a property of the package, not of a single version). `release.yml` also attempts the change automatically and emits a warning with the manual path if it is not permitted.
+Notes, verified against a real org-scoped package:
 
-To inspect what you actually have:
+- A package pushed by `release.yml` **is linked to the repository** (the API reports `repository.full_name`), even though GitHub's docs note that org-scoped packages are not linked by default.
+- The **organization** package page does not offer the visibility switch for such a package, and the REST API cannot change it either: `PATCH /orgs/<org>/packages/container/<name>` answers `404 Not Found` even with a `packages: write` token. Use the repository-scoped page above.
+- Once public, it stays public across releases (visibility belongs to the package, not to a version).
+
+To inspect the package programmatically (needs the `packages` scope, which a plain `repo` token does not have):
 
 ```bash
-gh auth refresh -s read:packages,write:packages     # the packages scope is needed for these endpoints
-gh api /repos/<owner>/<repo>/packages/container/clawperf \
+gh auth refresh -s read:packages,write:packages
+gh api /orgs/<org>/packages/container/clawperf \
   --jq '{visibility, repository: .repository.full_name, owner: .owner.login}'
 ```
+
+`release.yml` also attempts the visibility change and warns with the manual path when it is not permitted.
 
 ## License
 

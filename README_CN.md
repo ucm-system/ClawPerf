@@ -444,21 +444,29 @@ git tag v0.7.0 && git push origin main v0.7.0
 
 #### 让镜像可被匿名拉取
 
-ghcr 的包**默认是私有的**，未登录的 `docker pull` 会失败。可见性开关在包自己的设置页上，而**具体是哪个页面取决于包的归属**：
+ghcr 的包**默认是私有的**，未登录的 `docker pull` 会失败。开关在包自己的设置页上：
 
-- 用工作流的 `GITHUB_TOKEN` 推送（本仓库的做法）→ 包归属**仓库**：
-  `https://github.com/<owner>/<repo>/pkgs/container/clawperf` → **Package settings** → *Danger Zone* → **Change visibility** → Public。
-- 用个人 PAT 推送 → 包归属**组织**，GitHub **不允许修改其可见性**，只能删除后用 `GITHUB_TOKEN` 重新推送。
+1. 打开包的落地页 —— 由仓库工作流发布的包，用**仓库侧**地址：
+   `https://github.com/<owner>/<repo>/pkgs/container/clawperf`
+   （从仓库页面的 *Packages* 区域，或组织的 *Packages* 列表进入）
+2. 右侧点击 **Package settings**
+3. 页面底部 **Danger Zone** → **Change visibility** → **Public**
 
-一旦改为公开，后续发版会保持公开（可见性是包级别的属性，不是某个版本的属性）。`release.yml` 也会尝试自动修改，若无权限则给出警告并提示手工路径。
+以下几点已在真实的组织级包上验证过：
 
-想确认自己的包属于哪种情况：
+- `release.yml` 推送的包**确实已链接到仓库**（API 返回 `repository.full_name`），尽管 GitHub 文档说组织级包默认不链接。
+- 对这类包，**组织级包页面不提供可见性开关**，REST API 也改不了：即便用带 `packages: write` 的 token，`PATCH /orgs/<org>/packages/container/<name>` 也返回 `404 Not Found`。请用上面的仓库侧页面。
+- 一旦改为公开，后续发版会保持公开（可见性属于包本身，不属于某个版本）。
+
+想用命令行确认包的状态（需要 `packages` 权限，普通 `repo` token 没有）：
 
 ```bash
-gh auth refresh -s read:packages,write:packages     # 这些接口需要 packages 权限
-gh api /repos/<owner>/<repo>/packages/container/clawperf \
+gh auth refresh -s read:packages,write:packages
+gh api /orgs/<org>/packages/container/clawperf \
   --jq '{visibility, repository: .repository.full_name, owner: .owner.login}'
 ```
+
+`release.yml` 也会尝试自动修改可见性，无权限时给出警告并提示手工路径。
 
 ## License
 
