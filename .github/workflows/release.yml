@@ -226,22 +226,21 @@ jobs:
           /tmp/wheeltest/bin/clawperf-mock-server --help > /dev/null
 
       - name: Checksums
-        # Named *.sha256 so the finalise job's `--pattern '*.sha256'` picks it
-        # up together with the per-image checksums.
+        # Kept OUTSIDE dist/: gh-action-pypi-publish validates everything in the
+        # packages dir and rejects a non-distribution file like *.sha256.
         run: |
-          cd dist
-          sha256sum ./*.whl ./*.tar.gz > clawperf-dist.sha256
+          sha256sum dist/*.whl dist/*.tar.gz | sed 's|dist/||' > clawperf-dist.sha256
           cat clawperf-dist.sha256
 
       - name: Upload to the release
         env:
           TAG: ${{ needs.verify.outputs.tag }}
-        run: gh release upload "$TAG" dist/* --clobber
+        run: gh release upload "$TAG" dist/* clawperf-dist.sha256 --clobber
 
       - uses: actions/upload-artifact@v4
         with:
           name: dist
-          path: dist/*
+          path: dist/*   # only the real distributions reach the PyPI job
           if-no-files-found: error
           retention-days: 7
 
