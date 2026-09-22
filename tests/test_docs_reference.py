@@ -9,6 +9,7 @@ described, and a third of the flags had no help text at all.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -142,7 +143,7 @@ def test_default_column_tells_the_truth():
 
 SHOTS_DIR = ROOT / "docs" / "shots"
 EXPECTED_SHOTS = [
-    "slo", "scenario", "hitrate", "trace",
+    "slo", "scenario", "hitrate", "trace", "agent", "replay",
     "live-run", "live-tables", "live-hitrate", "live-hitrate-tables",
     "shell-safety",
 ]
@@ -183,4 +184,41 @@ def test_pages_show_the_screenshots():
     assert "shots/slo.png" in reference
     for readme in ("README.md", "README_CN.md"):
         assert "docs/shots/slo.png" in (ROOT / readme).read_text(encoding="utf-8")
+
+
+def test_landing_page_has_a_table_of_contents():
+    """The landing page must be navigable: every section is reachable by link."""
+    index = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+    sections = [s for s in re.findall(r'<section id="([^"]+)"', index) if s != "contents"]
+    assert len(sections) >= 5, sections
+    for anchor in sections:
+        assert f'href="#{anchor}"' in index, f"section #{anchor} is not linked from anywhere"
+
+
+# Flags that belong to *other* tools, legitimately mentioned in the docs.
+FOREIGN_FLAGS = {"--help", "--port", "--enable-auto-tool-choice", "--tool-call-parser"}
+
+
+def test_landing_page_only_mentions_real_flags():
+    """Every --flag on the landing page must exist in the CLI.
+
+    The landing page is hand-written (unlike reference.html), so this is what
+    keeps its parameter tables from inventing or renaming an option.
+    """
+    known = {opt for _, action in _actions() for opt in action.option_strings}
+    known |= FOREIGN_FLAGS
+    index = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+    body = re.sub(r"<style>.*?</style>", "", index, flags=re.DOTALL)  # drop CSS variables
+    body = re.sub(r"<script>.*?</script>", "", body, flags=re.DOTALL)
+    mentioned = set(re.findall(r"--[a-z][a-z0-9-]+", body))
+    unknown = sorted(m for m in mentioned if m not in known)
+    assert unknown == [], f"index.html mentions options that do not exist: {unknown}"
+
+
+def test_landing_page_examples_use_a_local_tokenizer():
+    """The documented examples should not silently fall back to a hub lookup."""
+    for page in ("docs/index.html", "docs/reference.html"):
+        text = (ROOT / page).read_text(encoding="utf-8")
+        assert "--tokenizer /mnt/model" in text, f"{page} has no local-tokenizer example"
+
 

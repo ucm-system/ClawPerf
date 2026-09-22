@@ -87,10 +87,13 @@ pip install -e ".[dev]"
 docker pull ghcr.io/ucm-system/clawperf:latest
 docker pull ghcr.io/ucm-system/clawperf:0.6.0        # 固定版本
 
-# 压测宿主机上的服务（host 网络让 127.0.0.1 可用）
+# 压测宿主机上的服务（host 网络让 127.0.0.1 可用）。
+# 镜像内置了 tokenizer：/app/tokenizers/qwen3-0.6b；
+# 压测真实模型时把宿主机模型目录挂进来即可。
 docker run --rm --net=host -v "$PWD/results:/app/results" \
   ghcr.io/ucm-system/clawperf:0.6.0 \
-  --mode scenario --endpoint http://127.0.0.1:8000/v1 --model qwen3 \
+  --mode scenario --endpoint http://127.0.0.1:8000/v1 --model Qwen3-0.6B \
+  --tokenizer /app/tokenizers/qwen3-0.6b \
   --output /app/results/run.json
 ```
 
@@ -112,7 +115,8 @@ docker images | grep clawperf
 ```bash
 clawperf \
   --endpoint http://localhost:8000/v1 \
-  --model qwen2.5-72b \
+  --model Qwen3-32B \
+  --tokenizer /mnt/model/Qwen3-32B \
   --context-profile medium \        # 命名档位：sys=28K + usr=10K + in=5K
   --num-users 8 \
   --max-turns 20 \
@@ -123,7 +127,8 @@ clawperf \
 或使用预置套件（依次运行多个 users × profile 场景）：
 
 ```bash
-clawperf --endpoint http://localhost:8000/v1 --model qwen2.5-72b \
+clawperf --endpoint http://localhost:8000/v1 --model Qwen3-32B \
+  --tokenizer /mnt/model/Qwen3-32B \
   --suite standard --output results_suite.json
 ```
 
@@ -131,7 +136,8 @@ clawperf --endpoint http://localhost:8000/v1 --model qwen2.5-72b \
 
 ```bash
 clawperf --mode hitrate \
-  --endpoint http://localhost:8000/v1 --model qwen2.5-72b \
+  --endpoint http://localhost:8000/v1 --model Qwen3-32B \
+  --tokenizer /mnt/model/Qwen3-32B \
   --num-requests 100 --input-len 4096 --output-len 128 \
   --hit-rate 0.5 \                  # 目标 50%（或用 --prefix-len 2048）
   --prefix-num 10 \
@@ -150,7 +156,8 @@ clawperf --mode hitrate \
 ```bash
 # 免引号写法：':' 或 '=' 都表示 '<='
 clawperf --mode slo \
-  --endpoint http://localhost:8000/v1 --model qwen2.5-72b \
+  --endpoint http://localhost:8000/v1 --model Qwen3-32B \
+  --tokenizer /mnt/model/Qwen3-32B \
   --slo ttft.p99:500 --slo tpot.avg:30 --slo e2e.max:30000 \
   --slo-min-users 1 --slo-max-users 200 \
   --slo-step-strategy geometric \
@@ -201,7 +208,8 @@ Max sustained users: 5
 
 ```bash
 clawperf --mode agent \
-  --endpoint http://localhost:8000/v1 --model qwen3 \
+  --endpoint http://localhost:8000/v1 --model Qwen3-32B \
+  --tokenizer /mnt/model/Qwen3-32B \
   --agent-tasks 10 \
   --agent-max-steps 12 --agent-max-tokens 512 \
   --metrics-endpoint http://localhost:8000/metrics --backend vllm
@@ -220,7 +228,8 @@ clawperf --mode trace --trace-file trace.jsonl --budget-sweep
 # （给了 --tokenizer 时精确分词），仅输入就超窗的请求会被明确跳过。
 clawperf --mode trace \
   --trace-file trace.jsonl \
-  --endpoint http://localhost:8000/v1 --model qwen3 \
+  --endpoint http://localhost:8000/v1 --model Qwen3-32B \
+  --tokenizer /mnt/model/Qwen3-32B \
   --model-context-length 32768 \
   --trace-users 3                    # 会话级并发
 ```
@@ -238,7 +247,8 @@ clawperf --mode record --upstream-endpoint http://localhost:8000 \
 # 终端 2：用 live 历史模式回放到任意端点。
 clawperf --mode replay \
   --recording session.jsonl \
-  --endpoint http://localhost:8000/v1 --model qwen3 \
+  --endpoint http://localhost:8000/v1 --model Qwen3-32B \
+  --tokenizer /mnt/model/Qwen3-32B \
   --history-mode live
 ```
 
@@ -363,7 +373,8 @@ clawperf --mode scenario --system-prefix-tokens 28000 \
 
 ```bash
 # 40 个请求以 2 req/s（泊松）到达 —— 不限制在途数量
-clawperf --mode hitrate --endpoint http://localhost:8000/v1 --model qwen3 \
+clawperf --mode hitrate --endpoint http://localhost:8000/v1 --model Qwen3-32B \
+  --tokenizer /mnt/model/Qwen3-32B \
   --num-requests 40 --input-len 4096 --hit-rate 0.5 \
   --request-rate 2
 ```
@@ -376,7 +387,8 @@ PD 分离（以及普通多副本）服务会**每个实例暴露一个 `/metric
 
 ```bash
 clawperf --mode scenario \
-  --endpoint http://lb:9000/v1 --model qwen3 \
+  --endpoint http://lb:9000/v1 --model Qwen3-32B \
+  --tokenizer /mnt/model/Qwen3-32B \
   --metrics-endpoint prefill=http://10.0.0.1:9101/metrics \
   --metrics-endpoint decode=http://10.0.0.2:9102/metrics
 ```
@@ -411,7 +423,7 @@ INFO:clawperf:Loaded local tokenizer from /mnt/model/Qwen3-0.6B [local dir (tran
 
 ```bash
 docker run --rm ghcr.io/ucm-system/clawperf:0.6.1 clawperf --mode scenario \
-  --endpoint http://host.docker.internal:8000/v1 --model qwen3 \
+  --endpoint http://host.docker.internal:8000/v1 --model Qwen3-32B \
   --tokenizer /app/tokenizers/qwen3-0.6b --num-users 1 --max-turns 1 --no-preflight
 ```
 

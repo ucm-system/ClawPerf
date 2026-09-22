@@ -307,7 +307,7 @@ def mode_section(key: str) -> str:
 MODE_CONTENT = {
 "scenario": """
 <h3 id="mode-scenario">scenario <span class="tag-pill">default</span></h3>
-<p class="sub">Multi-turn long-context workload: N users, each growing its own conversation until
+<p class="sub en">Multi-turn long-context workload: N users, each growing its own conversation until
 compaction kicks in.</p>
 <p class="sub zh">多轮长上下文负载：N 个用户各自维护不断增长的会话，直到触发压缩。</p>
 <div class="grid c2">
@@ -338,11 +338,17 @@ model's real window, otherwise compaction triggers at the wrong time.</span>
 <span class="zh">上下文由 <code class="inline">--context-profile</code>（或原始
 <code class="inline">--system-prefix-tokens / --user-prefix-tokens / --input-tokens-per-turn</code>）
 决定。<code class="inline">--max-context-tokens</code> 必须与模型真实窗口一致，否则压缩触发时机不对。</span></p>
+<figure>
+  <div class="frame shot">
+    <img loading="lazy" src="shots/scenario.png" alt="clawperf scenario report from a real Ascend 910B3 run">
+  </div>
+  <figcaption><span class="en">A real multi-turn run on an Ascend 910B3: TTFT and decode throughput as each session's context grows.</span><span class="zh">昇腾 910B3 上的真实多轮运行：会话上下文增长时的 TTFT 与解码吞吐。</span></figcaption>
+</figure>
 """,
 
 "hitrate": """
 <h3 id="mode-hitrate">hitrate</h3>
-<p class="sub">Controlled prefix-cache experiment: prefill known prefixes, then measure the real
+<p class="sub en">Controlled prefix-cache experiment: prefill known prefixes, then measure the real
 cache hit rate and the speedup it buys.</p>
 <p class="sub zh">受控前缀缓存实验：先注入已知前缀，再测量真实缓存命中率及其带来的加速比。</p>
 <div class="grid c2">
@@ -375,11 +381,17 @@ in play, which is what makes a multi-tenant workload realistic.</span>
 <span class="zh"><code class="inline">--hit-rate 0.7</code> 与 <code class="inline">--prefix-len 5734</code>
 是同一件事的两种写法（二者互斥）；<code class="inline">--prefix-num</code> 控制有多少个<b>不同</b>前缀，
 这正是多租户场景真实感的来源。</span></p>
+<figure>
+  <div class="frame shot">
+    <img loading="lazy" src="shots/hitrate.png" alt="clawperf hitrate report from a real run">
+  </div>
+  <figcaption><span class="en">TARGET vs MEASURED, the theoretical ceiling against the speedup actually observed, and a per-engine breakdown.</span><span class="zh">目标 vs 实测、理论上限与真实观测到的加速比，以及逐引擎明细。</span></figcaption>
+</figure>
 """,
 
 "slo": """
 <h3 id="mode-slo">slo</h3>
-<p class="sub">Concurrency sweep: raise the load step by step and report the largest number of users
+<p class="sub en">Concurrency sweep: raise the load step by step and report the largest number of users
 that still meets every latency constraint.</p>
 <p class="sub zh">并发扫描：逐步加压，报告仍能满足全部时延约束的最大用户数。</p>
 <div class="grid c2">
@@ -411,11 +423,17 @@ clawperf --mode slo \\
 |     6 |  945.1ms |   20.9ms | 22360.6ms |  0.0% |  ✗  |
 SLO: ttft.p99&lt;=1500ms, tpot.avg&lt;=30ms, e2e.max&lt;=30000ms
 Max sustained users: 5</code></pre>
+<figure>
+  <div class="frame shot">
+    <img loading="lazy" src="shots/slo.png" alt="clawperf slo report from a real Ascend 910B3 sweep: capacity curve and max sustained users">
+  </div>
+  <figcaption><span class="en">A real sweep: one column per constraint and the answer — 5 users, bound by <code class="inline">e2e.max</code> rather than TTFT.</span><span class="zh">真机扫描：每条约束一列与最终答案 —— 5 个用户，瓶颈是 <code class="inline">e2e.max</code> 而非 TTFT。</span></figcaption>
+</figure>
 """,
 
 "agent": """
 <h3 id="mode-agent">agent</h3>
-<p class="sub">Real agent-at-work performance: the model under test actually runs coding tasks —
+<p class="sub en">Real agent-at-work performance: the model under test actually runs coding tasks —
 reading files, editing, running shell commands — through tool calls.</p>
 <p class="sub zh">真实 Agent 工作负载：被测模型通过工具调用真正执行编码任务 —— 读文件、改代码、跑命令。</p>
 <div class="grid c2">
@@ -437,11 +455,17 @@ reading files, editing, running shell commands — through tool calls.</p>
   --agent-tasks 8 --agent-max-steps 12 --agent-max-tokens 512 \\
   --agent-shell-timeout 30 \\
   --output results_agent.json</code></pre>
+<figure>
+  <div class="frame shot">
+    <img loading="lazy" src="shots/agent.png" alt="clawperf agent report from a real run">
+  </div>
+  <figcaption><span class="en">A real agent run: completion rate, steps and tokens per task, and the latency verdict.</span><span class="zh">真机 agent 运行：任务完成率、每个任务的步数与 token，以及时延结论。</span></figcaption>
+</figure>
 """,
 
 "trace": """
 <h3 id="mode-trace">trace</h3>
-<p class="sub">KV-cache analysis from a production trace, plus optional real replay of the trace's
+<p class="sub en">KV-cache analysis from a production trace, plus optional real replay of the trace's
 requests against your endpoint.</p>
 <p class="sub zh">基于生产 trace 的 KV 缓存分析，并可选择把 trace 中的请求真实回放到你的端点。</p>
 <div class="grid c2">
@@ -471,11 +495,17 @@ clawperf --mode trace --trace-file trace.jsonl.gz \\
   --endpoint http://localhost:8000/v1 --model qwen3 --tokenizer /mnt/model/Qwen3-32B \\
   --cache-budget-gb 40 --kv-bytes-per-token 2.0 --model-context-length 32768 \\
   --trace-users 4 --output results_trace.json</code></pre>
+<figure>
+  <div class="frame shot">
+    <img loading="lazy" src="shots/trace.png" alt="clawperf trace report: hit rate versus cache budget">
+  </div>
+  <figcaption><span class="en">Hit rate against cache budget over a real trace — where more cache stops buying anything.</span><span class="zh">真实 trace 下命中率随缓存容量的变化 —— 加到多少就不再划算。</span></figcaption>
+</figure>
 """,
 
 "record": """
 <h3 id="mode-record">record</h3>
-<p class="sub">A recording proxy: point a real agent (Claude Code, any OpenAI/Anthropic client) at
+<p class="sub en">A recording proxy: point a real agent (Claude Code, any OpenAI/Anthropic client) at
 it, work normally, and every request/response is written to JSONL.</p>
 <p class="sub zh">录制代理：把真实 Agent（Claude Code 或任意 OpenAI/Anthropic 客户端）指向它，正常工作，
 所有请求/响应写入 JSONL。</p>
@@ -492,7 +522,7 @@ across restarts, and you are told how many prior entries were kept.</span>
 
 "replay": """
 <h3 id="mode-replay">replay</h3>
-<p class="sub">Replay a recording against any endpoint, preserving multi-turn history.</p>
+<p class="sub en">Replay a recording against any endpoint, preserving multi-turn history.</p>
 <p class="sub zh">把录制内容回放到任意端点，并保持多轮历史。</p>
 <div class="grid c2">
   <div class="card">
@@ -512,6 +542,12 @@ across restarts, and you are told how many prior entries were kept.</span>
 <pre><code>clawperf --mode replay --recording session.jsonl \\
   --endpoint http://localhost:8000/v1 --model qwen3-32b \\
   --history-mode live --concurrency 4 --output results_replay.json</code></pre>
+<figure>
+  <div class="frame shot">
+    <img loading="lazy" src="shots/replay.png" alt="clawperf replay report from a recorded session">
+  </div>
+  <figcaption><span class="en">A recorded session replayed with live history: the same latency statistics as any other mode, plus a verdict.</span><span class="zh">按 live 历史回放的录制会话：与其他模式一致的时延统计与结论。</span></figcaption>
+</figure>
 """,
 }
 
@@ -527,7 +563,6 @@ def build_html() -> str:
         ("metrics", "Metrics & PD disaggregation", "指标与 PD 分离"),
         ("slo-syntax", "SLO constraint syntax", "SLO 约束语法"),
         ("params", "All parameters", "全部参数"),
-        ("shots", "Real output", "真实输出"),
         ("env", "Env vars & config file", "环境变量与配置文件"),
         ("exit", "Output & exit codes", "产物与退出码"),
         ("trouble", "Troubleshooting", "故障排查"),
@@ -841,6 +876,12 @@ clawperf --mode hitrate --endpoint http://localhost:8000/v1 --model qwen3 \\
         <tr><td><code class="inline">'a&lt;=1,b&lt;=2'</code></td><td>{s_multi}</td><td>{s_multi_note}</td></tr>
       </tbody>
     </table></div>
+    <figure>
+      <div class="frame shot">
+        <img loading="lazy" src="shots/shell-safety.png" alt="bash rejecting an unquoted --slo ttft.p99<=10000, next to the shell-safe spelling and ClawPerf's diagnostic for a bare metric">
+      </div>
+      <figcaption>{shots_cap3}</figcaption>
+    </figure>
     <div class="grid c2">
       <div class="card">
         <p class="en"><b>Metrics:</b> <code class="inline">ttft</code> (time to first token),
@@ -867,32 +908,6 @@ clawperf --mode hitrate --endpoint http://localhost:8000/v1 --model qwen3 \\
     <h2>{params_h}</h2>
     <p class="sub">{params_sub}</p>
     {params}
-  </div>
-</section>
-
-<section id="shots">
-  <div class="wrap">
-    <h2>{shots_h}</h2>
-    <p class="sub">{shots_sub}</p>
-    <figure>
-      <div class="frame shot">
-        <img src="shots/slo.png" alt="clawperf report output for a real SLO sweep on an Ascend 910B3: capacity curve, verdict and max sustained users">
-      </div>
-      <figcaption>{shots_cap1}</figcaption>
-    </figure>
-    <figure>
-      <div class="frame shot">
-        <img src="shots/live-run.png" alt="A live clawperf scenario run: configuration banner, pre-flight probe, progress and headline counters">
-      </div>
-      <figcaption>{shots_cap2}</figcaption>
-    </figure>
-    <figure>
-      <div class="frame shot">
-        <img src="shots/shell-safety.png" alt="bash rejecting an unquoted --slo ttft.p99<=10000, and ClawPerf's diagnostic for a bare metric">
-      </div>
-      <figcaption>{shots_cap3}</figcaption>
-    </figure>
-    <p class="sub">{shots_more}</p>
   </div>
 </section>
 
@@ -1109,23 +1124,6 @@ def fill_template(body: str) -> str:
             "and its accepted values. Mode-specific groups are listed under the mode they belong to.",
             "由 <code class=\"inline\">clawperf --help</code> 自动生成 —— 每个参数、默认值与可选值。"
             "各模式专属参数列在对应模式之下。"),
-        "shots_h": both("Real output", "真实输出"),
-        "shots_sub": both(
-            "Terminal captures of commands that actually ran — the first from a committed "
-            "vLLM-Ascend 910B3 result (<code class=\"inline\">results_e2e/slo.json</code>), the "
-            "other two reproducible on any laptop against the bundled mock server. Regenerate "
-            "them with <code class=\"inline\">python scripts/gen_shots.py</code>.",
-            "以下都是真实执行过的命令的终端截图 —— 第一张来自已提交的昇腾 910B3 结果"
-            "（<code class=\"inline\">results_e2e/slo.json</code>），后两张在任意笔记本上用内置 "
-            "mock server 即可复现。可用 <code class=\"inline\">python scripts/gen_shots.py</code> 重新生成。"),
-        "shots_cap1": both(
-            "A real SLO sweep: one column per constraint, the verdict, and the largest concurrency "
-            "that still met every target (5 users — the binding constraint was <code class=\"inline\">e2e.max</code>).",
-            "真机 SLO 扫描：每条约束一列，给出结论与仍满足全部目标的<br>最大并发（5 用户 —— 真正的瓶颈是 "
-            "<code class=\"inline\">e2e.max</code>）。"),
-        "shots_cap2": both(
-            "A live run: resolved configuration, the pre-flight probe, progress, and the headline counters.",
-            "实跑过程：解析后的配置、预检探针、实时进度与总体指标。"),
         "shots_cap3": both(
             "The shell-quoting trap: unquoted <code class=\"inline\">&lt;=</code> is a redirection to bash, "
             "so <code class=\"inline\">--slo ttft.p99:10000</code> exists.",

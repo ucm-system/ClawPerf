@@ -38,9 +38,19 @@ class SiteParser(HTMLParser):
         self.refs: list[tuple[str, int]] = []
         self.ids: set[str] = set()
         self.fragments: list[tuple[str, int]] = []
+        self.lang_counts = {"en": 0, "zh": 0}
+
+    def _note_classes(self, attrs) -> None:
+        for name, value in attrs:
+            if name == "class" and value:
+                tokens = value.split()
+                for lang in ("en", "zh"):
+                    if lang in tokens:
+                        self.lang_counts[lang] += 1
 
     def handle_starttag(self, tag, attrs):
         line = self.getpos()[0]
+        self._note_classes(attrs)
         for name, value in attrs:
             if name == "id" and value:
                 self.ids.add(value)
@@ -52,6 +62,7 @@ class SiteParser(HTMLParser):
             self.stack.append((tag, line))
 
     def handle_startendtag(self, tag, attrs):
+        self._note_classes(attrs)
         for name, value in attrs:
             if name == "id" and value:
                 self.ids.add(value)
@@ -100,6 +111,16 @@ def check_html(path: Path, root: Path) -> list[str]:
     for fragment, line in parser.fragments:
         if fragment not in parser.ids:
             problems.append(f"{path.name}: line {line}: dead in-page anchor #{fragment}")
+
+    # Bilingual parity: every English node needs a Chinese twin, otherwise one
+    # of the two languages silently loses a paragraph.
+    en_count = parser.lang_counts["en"]
+    zh_count = parser.lang_counts["zh"]
+    if en_count != zh_count:
+        problems.append(
+            f"{path.name}: bilingual parity broken — {en_count} .en nodes vs "
+            f"{zh_count} .zh nodes (a translation is missing or duplicated)"
+        )
     return problems
 
 

@@ -423,6 +423,18 @@ SHOTS: list[dict] = [
                    "returns flatten out.",
      "caption_zh": "真实 trace 上的预算扫描：命中率随缓存容量的变化，以及收益何时趋于平坦。",
      "make": lambda port: report_shot("trace.json", "clawperf report · trace")},
+    {"name": "agent", "title": "clawperf report results_e2e/agent.json  ·  vLLM-Ascend 910B3",
+     "caption_en": "Agent mode on real hardware: the model under test really called tools "
+                   "(read/write files, run shell) while its context grew, and the report shows the "
+                   "cost per task.",
+     "caption_zh": "真机上的 agent 模式：被测模型真的调用了工具（读写文件、执行 shell），上下文随之增长，"
+                   "报告给出每个任务的成本。",
+     "make": lambda port: report_shot("agent.json", "clawperf report · agent")},
+    {"name": "replay", "title": "clawperf report results_e2e/replay.json  ·  recorded session replay",
+     "caption_en": "Replaying a recorded agent session against an endpoint with live history, so the "
+                   "prefix alignment matches what really happened.",
+     "caption_zh": "把录制的 Agent 会话按 live 历史回放到端点，前缀对齐与真实情况一致。",
+     "make": lambda port: report_shot("replay.json", "clawperf report · replay")},
     {"name": "live-run", "title": "clawperf --mode scenario  ·  live run (mock server)",
      "caption_en": "A run in progress (1/2): the resolved configuration, the pre-flight probe, "
                    "live progress and the headline counters. Mock server, so no GPU is needed.",

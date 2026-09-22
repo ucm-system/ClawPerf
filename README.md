@@ -93,10 +93,13 @@ Every release publishes a multi-arch image (`linux/amd64` + `linux/arm64`, incl.
 docker pull ghcr.io/ucm-system/clawperf:latest
 docker pull ghcr.io/ucm-system/clawperf:0.6.0        # pin a version
 
-# benchmark a service on the host (host networking keeps 127.0.0.1 working)
+# benchmark a service on the host (host networking keeps 127.0.0.1 working).
+# The image bundles a tokenizer at /app/tokenizers/qwen3-0.6b; mount your own
+# model directory instead when benchmarking a real model.
 docker run --rm --net=host -v "$PWD/results:/app/results" \
   ghcr.io/ucm-system/clawperf:0.6.0 \
-  --mode scenario --endpoint http://127.0.0.1:8000/v1 --model qwen3 \
+  --mode scenario --endpoint http://127.0.0.1:8000/v1 --model Qwen3-0.6B \
+  --tokenizer /app/tokenizers/qwen3-0.6b \
   --output /app/results/run.json
 ```
 
@@ -111,15 +114,18 @@ docker images | grep clawperf
 
 ## Quick Start
 
-All examples assume a running vLLM-style endpoint (`http://localhost:8000/v1`).
+All examples assume a running vLLM-style endpoint (`http://localhost:8000/v1`) and a **local tokenizer
+directory** — pass the directory your server loaded the model from. It is loaded strictly offline
+(no hub lookup, no download) and drives exact token counting and content generation.
 
 ### scenario — multi-user long-context workload
 
 ```bash
 clawperf \
   --endpoint http://localhost:8000/v1 \
-  --model qwen2.5-72b \
-  --context-profile medium \        # named profile: sys=28K + usr=10K + in=5K
+  --model Qwen3-32B \
+  --tokenizer /mnt/model/Qwen3-32B \   # local dir: loaded offline, exact tokenization
+  --context-profile medium \           # named profile: sys=28K + usr=10K + in=5K
   --num-users 8 \
   --max-turns 20 \
   --metrics-endpoint http://localhost:8000/metrics \
@@ -129,7 +135,8 @@ clawperf \
 Or use a pre-configured suite that runs several (users × profile) scenarios in sequence:
 
 ```bash
-clawperf --endpoint http://localhost:8000/v1 --model qwen2.5-72b \
+clawperf --endpoint http://localhost:8000/v1 --model Qwen3-32B \
+  --tokenizer /mnt/model/Qwen3-32B \
   --suite standard --output results_suite.json
 ```
 
@@ -137,7 +144,8 @@ clawperf --endpoint http://localhost:8000/v1 --model qwen2.5-72b \
 
 ```bash
 clawperf --mode hitrate \
-  --endpoint http://localhost:8000/v1 --model qwen2.5-72b \
+  --endpoint http://localhost:8000/v1 --model Qwen3-32B \
+  --tokenizer /mnt/model/Qwen3-32B \
   --num-requests 100 --input-len 4096 --output-len 128 \
   --hit-rate 0.5 \                  # target 50% (or --prefix-len 2048)
   --prefix-num 10 \
@@ -156,7 +164,8 @@ Constraints are freely composable: any latency metric (`ttft` / `tpot` / `e2e`) 
 ```bash
 # Shell-safe: ':' or '=' means '<='
 clawperf --mode slo \
-  --endpoint http://localhost:8000/v1 --model qwen2.5-72b \
+  --endpoint http://localhost:8000/v1 --model Qwen3-32B \
+  --tokenizer /mnt/model/Qwen3-32B \
   --slo ttft.p99:500 --slo tpot.avg:30 --slo e2e.max:30000 \
   --slo-min-users 1 --slo-max-users 200 \
   --slo-step-strategy geometric \
@@ -207,7 +216,8 @@ Requires the backend to support tool calling (e.g. `vllm serve ... --enable-auto
 
 ```bash
 clawperf --mode agent \
-  --endpoint http://localhost:8000/v1 --model qwen3 \
+  --endpoint http://localhost:8000/v1 --model Qwen3-32B \
+  --tokenizer /mnt/model/Qwen3-32B \
   --agent-tasks 10 \
   --agent-max-steps 12 --agent-max-tokens 512 \
   --metrics-endpoint http://localhost:8000/metrics --backend vllm
@@ -228,7 +238,8 @@ clawperf --mode trace --trace-file trace.jsonl --budget-sweep
 # whose input alone exceeds the window with a clear error.
 clawperf --mode trace \
   --trace-file trace.jsonl \
-  --endpoint http://localhost:8000/v1 --model qwen3 \
+  --endpoint http://localhost:8000/v1 --model Qwen3-32B \
+  --tokenizer /mnt/model/Qwen3-32B \
   --model-context-length 32768 \
   --trace-users 3                    # session-aware concurrency
 ```
@@ -247,7 +258,8 @@ clawperf --mode record --upstream-endpoint http://localhost:8000 \
 # Terminal 2: replay the recording against any endpoint with live history.
 clawperf --mode replay \
   --recording session.jsonl \
-  --endpoint http://localhost:8000/v1 --model qwen3 \
+  --endpoint http://localhost:8000/v1 --model Qwen3-32B \
+  --tokenizer /mnt/model/Qwen3-32B \
   --history-mode live
 ```
 
@@ -378,7 +390,8 @@ Closed-loop answers "how fast can the server go at N in flight"; open-loop answe
 
 ```bash
 # 40 requests arriving at 2 req/s (Poisson) — no in-flight cap
-clawperf --mode hitrate --endpoint http://localhost:8000/v1 --model qwen3 \
+clawperf --mode hitrate --endpoint http://localhost:8000/v1 --model Qwen3-32B \
+  --tokenizer /mnt/model/Qwen3-32B \
   --num-requests 40 --input-len 4096 --hit-rate 0.5 \
   --request-rate 2
 ```
@@ -391,7 +404,8 @@ PD-disaggregated (and plain multi-replica) services expose **one `/metrics` port
 
 ```bash
 clawperf --mode scenario \
-  --endpoint http://lb:9000/v1 --model qwen3 \
+  --endpoint http://lb:9000/v1 --model Qwen3-32B \
+  --tokenizer /mnt/model/Qwen3-32B \
   --metrics-endpoint prefill=http://10.0.0.1:9101/metrics \
   --metrics-endpoint decode=http://10.0.0.2:9102/metrics
 ```
@@ -426,7 +440,7 @@ The container image bundles a known-good tokenizer, so you can isolate a tokeniz
 
 ```bash
 docker run --rm ghcr.io/ucm-system/clawperf:0.6.1 clawperf --mode scenario \
-  --endpoint http://host.docker.internal:8000/v1 --model qwen3 \
+  --endpoint http://host.docker.internal:8000/v1 --model Qwen3-32B \
   --tokenizer /app/tokenizers/qwen3-0.6b --num-users 1 --max-turns 1 --no-preflight
 ```
 
