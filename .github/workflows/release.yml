@@ -392,6 +392,26 @@ jobs:
             "${IMAGE}:${VERSION}-amd64" "${IMAGE}:${VERSION}-arm64"
           docker buildx imagetools inspect "${IMAGE}:${VERSION}"
 
+      - name: Make the container package public
+        # ghcr packages are private by default, so `docker pull` fails for
+        # anyone who is not logged in. GITHUB_TOKEN carries packages: write and
+        # is the owner of packages this repository publishes, so it can flip
+        # the visibility; if the org policy forbids it, warn instead of failing.
+        env:
+          IMAGE: ${{ needs.verify.outputs.image }}
+        run: |
+          set -euo pipefail
+          OWNER="${IMAGE#ghcr.io/}"; OWNER="${OWNER%%/*}"
+          PACKAGE="${IMAGE##*/}"
+          echo "setting visibility of $OWNER/$PACKAGE to public"
+          if gh api --method PATCH "/orgs/$OWNER/packages/container/$PACKAGE" \
+               -f visibility=public > /dev/null 2>&1; then
+            echo "package $OWNER/$PACKAGE is public"
+          else
+            echo "::warning::could not set $OWNER/$PACKAGE public automatically —" \
+                 "do it in Packages → $PACKAGE → Package settings → Change visibility"
+          fi
+
   # ── 7. Finalise: checksums, then publish the draft ──────────────────────────
   release-final:
     name: Publish the release
