@@ -1,0 +1,150 @@
+name: CI
+
+# Continuous integration: lint, cross-platform tests, and a packaging smoke
+# test. Releases are handled separately by release.yml (triggered by tags).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: python -m pip install --upgrade pip ruff
+
+      - name: Ruff
+        run: ruff check src/ tests/
+
+  test:
+    name: Tests (${{ matrix.os }} · py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  python-version: "3.10" }
+          - { os: ubuntu-latest,  python-version: "3.11" }
+          - { os: ubuntu-latest,  python-version: "3.12" }
+          - { os: ubuntu-latest,  python-version: "3.13" }
+          - { os: windows-latest, python-version: "3.12" }
+          - { os: macos-latest,   python-version: "3.12" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install (editable, with dev extras)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run the test suite
+        # ClawPerf's HTTP clients disable trust_env, but the environment is
+        # cleared anyway so no corporate/system proxy can hijack localhost.
+        env:
+          NO_PROXY: "*"
+          no_proxy: "*"
+        run: python -m pytest -q
+
+  package:
+    name: Package (sdist + wheel)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+
+      - name: Validate the metadata (twine check)
+        run: python -m twine check dist/*
+
+      - name: Install the wheel in a clean venv and smoke-test the entry points
+        run: |
+          python -m venv /tmp/wheeltest
+          /tmp/wheeltest/bin/python -m pip install --upgrade pip
+          /tmp/wheeltest/bin/python -m pip install dist/*.whl
+          /tmp/wheeltest/bin/clawperf --help > /dev/null
+          /tmp/wheeltest/bin/clawperf-mock-server --help > /dev/null
+          /tmp/wheeltest/bin/python -c "import clawperf, sys; print('installed', clawperf.__version__, sys.version)"
+
+      - name: Upload the built distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  docker:
+    name: Image build (linux/${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Native builds on both architectures — the same setup release.yml
+          # uses, so a broken Dockerfile is caught long before a tag is pushed.
+          - { arch: amd64, runner: ubuntu-latest }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show the runner architecture
+        run: |
+          uname -m
+          docker version --format 'server arch = {{.Server.Arch}}'
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          load: true
+          tags: clawperf:ci-${{ matrix.arch }}
+          cache-from: type=gha,scope=ci-${{ matrix.arch }}
+          cache-to: type=gha,scope=ci-${{ matrix.arch }},mode=max
+
+      - name: Smoke-test the image
+        run: |
+          set -eux
+          docker image inspect clawperf:ci-${{ matrix.arch }} --format 'image size = {{.Size}} bytes'
+          # entry point + help
+          docker run --rm clawperf:ci-${{ matrix.arch }} --help > /dev/null
+          # subcommand path
+          docker run --rm clawperf:ci-${{ matrix.arch }} report --help > /dev/null
+          # a real run inside the image: local trace simulation (needs no endpoint)
+          # exercises the installed wheel and the bundled examples/
+          docker run --rm clawperf:ci-${{ matrix.arch }} \
+            --mode trace --trace-file examples/sample_trace.jsonl --budget-sweep \
+            --output /tmp/smoke.json
+          # mock LLM server entry point is present too
+          docker run --rm --entrypoint clawperf-mock-server clawperf:ci-${{ matrix.arch }} --help > /dev/null

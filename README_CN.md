@@ -1,5 +1,7 @@
 # ClawPerf
 
+[![CI](https://github.com/ucm-system/ClawPerf/actions/workflows/ci.yml/badge.svg)](https://github.com/ucm-system/ClawPerf/actions/workflows/ci.yml)
+[![Release](https://github.com/ucm-system/ClawPerf/actions/workflows/release.yml/badge.svg)](https://github.com/ucm-system/ClawPerf/actions/workflows/release.yml)
 [![PyPI Version](https://img.shields.io/pypi/v/clawperf.svg)](https://pypi.org/project/clawperf/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/clawperf.svg)](https://pypi.org/project/clawperf/)
 [![License](https://img.shields.io/pypi/l/clawperf.svg)](https://github.com/ucm-system/ClawPerf/blob/main/LICENSE)
@@ -55,6 +57,30 @@ pip install -e ".[dev]"
 说明：
 - **Windows**：开箱即用 —— ClawPerf 强制 UTF-8 控制台输出，帮助文本与报告（✓/✅/█）在 GBK 代码页下不再崩溃；JSONL 读取兼容带 BOM 的文件。
 - **无 GPU / CI**：`clawperf-mock-server` 提供完整假端点（字典树前缀缓存 + `/metrics`）—— 除 `agent`/`trace` 真实回放外的所有模式都能跑，命中率目标可端到端验证（见 E2E 报告）。
+
+### 容器镜像
+
+每次发版都会发布多架构镜像（`linux/amd64` + `linux/arm64`，含 Ascend/aarch64 主机），预装全部可选依赖：
+
+```bash
+docker pull ghcr.io/ucm-system/clawperf:latest
+docker pull ghcr.io/ucm-system/clawperf:0.6.0        # 固定版本
+
+# 压测宿主机上的服务（host 网络让 127.0.0.1 可用）
+docker run --rm --net=host -v "$PWD/results:/app/results" \
+  ghcr.io/ucm-system/clawperf:0.6.0 \
+  --mode scenario --endpoint http://127.0.0.1:8000/v1 --model qwen3 \
+  --output /app/results/run.json
+```
+
+以非 root 用户运行，内置 `examples/` 示例 trace 与本地 tokenizer，运行历史写入 `/app/results` 卷。
+
+**离线/内网安装** —— 每次发版还会附上按架构打包的镜像包：
+
+```bash
+gunzip -c clawperf-0.6.0-linux-amd64.tar.gz | docker load   # 或 -linux-arm64.tar.gz
+docker images | grep clawperf
+```
 
 ## 快速开始
 
@@ -248,6 +274,28 @@ backend: vllm
 | trace | `--trace-file --cache-budget-tokens/--cache-budget-gb --eviction-policy --trace-block-size --budget-sweep --trace-users --kv-bytes-per-token --model-context-length` |
 | 共享并发 | `--concurrency`（请求级：hitrate/replay/trace）；`--trace-users`（会话级：trace） |
 | 指标 | `--metrics-endpoint`（可重复 / 逗号分隔；支持 `名称=url` 标签）`--metrics-interval --metrics-samples --reset-cache --backend` |
+| 节奏控制 | `--user-arrival`（会话**加入**时机）与 `--request-rate`（请求/秒，开环） |
+
+### 请求频率：开环 vs 闭环
+
+三个容易混淆的旋钮：
+
+| 旋钮 | 控制什么 | 语义 |
+|------|----------|------|
+| `--user-arrival burst\|steady:<秒>\|poisson:<λ>` | 每个**会话/用户何时加入**压测 | 加入后该用户各轮请求背靠背发送 |
+| `--concurrency N` | **闭环**在途请求上限（hitrate / replay / trace） | 一个请求完成才发下一个 —— 服务端自身限速 |
+| `--request-rate R` | **开环**请求发出速率（req/s） | 按泊松过程以 R req/s 发请求，**与是否完成无关**（等同 `benchmark_serving --request-rate` 语义） |
+
+闭环回答"服务端在 N 并发下能跑多快"；开环回答"当流量以 R req/s 到达时会发生什么"——两者不可互换，因为闭环永远不会压垮服务端，开环会。
+
+```bash
+# 40 个请求以 2 req/s（泊松）到达 —— 不限制在途数量
+clawperf --mode hitrate --endpoint http://localhost:8000/v1 --model qwen3 \
+  --num-requests 40 --input-len 4096 --hit-rate 0.5 \
+  --request-rate 2
+```
+
+设置 `--request-rate` 后 `--concurrency` 会被忽略（真开环），摘要会给出目标 vs 实测速率与发送偏差，例如 `Release Skew avg/max 1.2 / 8.4 ms`。适用于 `hitrate`、`replay` 与 `trace` 真实回放；`scenario`/`slo`/`agent` 保持闭环多轮语义（那正是 Agent 负载模型 —— Agent 在上一个请求返回后立刻发下一个）。
 
 ### 多实例 / PD 分离服务的指标采集
 
@@ -332,8 +380,41 @@ ClawPerf 模拟**真实 Agent 系统的工作负载**——不是单次 API 调�
 ```bash
 pip install -e ".[dev]"
 pytest
-ruff check src/
+ruff check src/ tests/
 ```
+
+### CI
+
+| 工作流 | 触发条件 | 作用 |
+|--------|----------|------|
+| [`ci.yml`](.github/workflows/ci.yml) | push 到 `main`、PR | `ruff check`；Linux（3.10–3.13）+ Windows/macOS 全量测试；打包烟测（构建 → `twine check` → 干净 venv 安装 wheel → 跑两个入口命令） |
+| [`release.yml`](.github/workflows/release.yml) | 打 `v*` tag（或手动触发） | 测试门禁 → sdist + wheel → 原生构建 `linux/amd64` 与 `linux/arm64` 镜像并推送 ghcr.io → 多架构 manifest → 创建 GitHub Release 并附上全部制品 |
+
+### 发版流程
+
+发版由 tag 驱动 —— 改版本号、打 tag、推送即可：
+
+```bash
+# 1. 修改 src/clawperf/__init__.py  __version__ = "0.7.0"
+# 2. 提交后打 tag 并推送
+git commit -am "chore: release v0.7.0"
+git tag v0.7.0 && git push origin main v0.7.0
+```
+
+`verify` 任务会在 tag 与 `clawperf.__version__` 不一致时立即失败，两者不可能悄悄错位。
+
+随后自动产出：
+
+| 制品 | 说明 |
+|------|------|
+| `clawperf-<v>-py3-none-any.whl` | 通用 wheel —— 一个文件，所有 extras 可用 |
+| `clawperf-<v>.tar.gz` | 源码包 |
+| `clawperf-<v>-linux-amd64.tar.gz` / `-linux-arm64.tar.gz` | 离线 Docker 镜像（`docker load` 导入） |
+| `SHA256SUMS` | wheel 与镜像包的校验和 |
+
+镜像 tag：`:<版本>`、`:<主.次>`、`:latest`（预发布 tag 如 `v0.7.0-rc1` 不会移动 `latest`）。镜像**按架构原生构建** —— amd64 用 `ubuntu-latest`，arm64 用 `ubuntu-24.04-arm`，全程不涉及 QEMU 模拟；若 ARM runner 不可用，可手动触发并传 `arm_runner: ubuntu-latest`。
+
+一次性仓库配置：**Settings → Actions → General → Workflow permissions → Read and write**（`GITHUB_TOKEN` 需要该权限才能推 ghcr.io）；若希望匿名拉取镜像，在组织的 **Packages → clawperf → Package settings** 中把可见性改为 Public。
 
 ## License
 

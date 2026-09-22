@@ -1,0 +1,40 @@
+# ── Build & cache artifacts ───────────────────────────────────────────────────
+.git
+.gitignore
+.github
+.gitattributes
+
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+dist_test/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+env/
+
+# ── Benchmark outputs (large, regenerated on every run) ───────────────────────
+results*.json
+results*.md
+results_e2e/
+clawperf_history.jsonl
+comparison.md
+ops_e2e/
+*.log
+
+# ── Local-only caches / editor & tool markers ─────────────────────────────────
+models/
+*.mdl
+.zcode/
+.idea/
+.vscode/
+*.swp
+
+# ── Docs assets not needed at runtime (keep the build context small) ──────────
+docs/*.png
+docs/*.jpg
+docs/*.jpeg

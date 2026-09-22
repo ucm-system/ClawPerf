@@ -1,0 +1,362 @@
+name: Release
+
+# Cut a release by pushing a tag:
+#
+#   git tag v0.6.0 && git push origin v0.6.0
+#
+# The tag MUST match `clawperf.__version__` in src/clawperf/__init__.py
+# (checked in the `verify` job). The workflow then:
+#   1. runs the test suite as a release gate,
+#   2. builds the sdist + wheel,
+#   3. builds native linux/amd64 (ubuntu-latest) and linux/arm64
+#      (ubuntu-24.04-arm) images, pushes them to ghcr.io and exports
+#      per-architecture offline tarballs,
+#   4. publishes a multi-arch manifest,
+#   5. creates the GitHub Release with every artifact attached.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to rebuild/re-release, e.g. v0.6.0"
+        required: true
+        type: string
+      arm_runner:
+        description: "Runner label for the arm64 image (use ubuntu-latest to emulate with QEMU)"
+        required: false
+        default: "ubuntu-24.04-arm"
+        type: string
+
+permissions:
+  contents: write   # create the GitHub Release
+  packages: write   # push to ghcr.io
+
+jobs:
+  # ── 1. Verify: tag matches the package version, and tests pass ───────────────
+  verify:
+    name: Verify tag + tests
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+      image: ${{ steps.meta.outputs.image }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Resolve tag, version and image name
+        id: meta
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          TAG="${INPUT_TAG:-$REF_NAME}"
+          VERSION="$(python -c "import sys; sys.path.insert(0, 'src'); import clawperf; print(clawperf.__version__)")"
+          if [ "$TAG" != "v$VERSION" ]; then
+            echo "::error::tag '$TAG' does not match clawperf.__version__ = '$VERSION'."
+            echo "Bump src/clawperf/__init__.py to '$TAG' (without the leading v), commit, then retag."
+            exit 1
+          fi
+          # ghcr.io requires a lowercase repository path.
+          IMAGE="ghcr.io/$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          PRERELEASE=false
+          case "$VERSION" in *-*) PRERELEASE=true ;; esac
+          echo "tag=$TAG"            >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION"    >> "$GITHUB_OUTPUT"
+          echo "image=$IMAGE"        >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "=== release metadata ==="
+          echo "tag        : $TAG"
+          echo "version    : $VERSION"
+          echo "image      : $IMAGE"
+          echo "prerelease : $PRERELEASE"
+
+      - name: Install (editable, with dev extras)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Test suite (release gate)
+        env:
+          NO_PROXY: "*"
+          no_proxy: "*"
+        run: python -m pytest -q
+
+  # ── 2. Python distributions ──────────────────────────────────────────────────
+  dist:
+    name: Build sdist + wheel
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Build and validate
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+          python -m twine check dist/*
+          ls -lh dist/
+
+      - name: Smoke-test the wheel in a clean venv
+        run: |
+          python -m venv /tmp/wheeltest
+          /tmp/wheeltest/bin/python -m pip install --upgrade pip
+          /tmp/wheeltest/bin/python -m pip install dist/*.whl
+          /tmp/wheeltest/bin/clawperf --help > /dev/null
+          /tmp/wheeltest/bin/clawperf-mock-server --help > /dev/null
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  # ── 3. Container images: native build per architecture ──────────────────────
+  #    amd64 → ubuntu-latest (native x64)
+  #    arm64 → ubuntu-24.04-arm (native ARM; QEMU is used only as a fallback
+  #            when the job is dispatched onto an x64 runner)
+  image:
+    name: Image linux/${{ matrix.arch }}
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ${{ inputs.arm_runner || 'ubuntu-24.04-arm' }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Set up QEMU (only when this runner is not natively arm64)
+        if: matrix.arch == 'arm64' && runner.arch != 'ARM64'
+        uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          load: true
+          tags: ${{ needs.verify.outputs.image }}:${{ needs.verify.outputs.version }}-${{ matrix.arch }}
+          labels: |
+            org.opencontainers.image.version=${{ needs.verify.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,scope=${{ matrix.arch }},mode=max
+
+      - name: Smoke-test the image
+        run: |
+          docker run --rm \
+            "${{ needs.verify.outputs.image }}:${{ needs.verify.outputs.version }}-${{ matrix.arch }}" \
+            --help > /dev/null
+
+      - name: Push the per-architecture image
+        run: docker push "${{ needs.verify.outputs.image }}:${{ needs.verify.outputs.version }}-${{ matrix.arch }}"
+
+      - name: Export the offline image tarball
+        run: |
+          set -euo pipefail
+          NAME="clawperf-${{ needs.verify.outputs.version }}-linux-${{ matrix.arch }}"
+          docker save \
+            "${{ needs.verify.outputs.image }}:${{ needs.verify.outputs.version }}-${{ matrix.arch }}" \
+            | gzip -9 > "${NAME}.tar.gz"
+          sha256sum "${NAME}.tar.gz" > "${NAME}.tar.gz.sha256"
+          ls -lh "${NAME}.tar.gz"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: offline-${{ matrix.arch }}
+          path: |
+            clawperf-*.tar.gz
+            clawperf-*.tar.gz.sha256
+          if-no-files-found: error
+          compression-level: 0   # already gzip-compressed
+          retention-days: 7
+
+  # ── 4. Combine the per-arch images into multi-arch tags ─────────────────────
+  manifest:
+    name: Publish multi-arch tags
+    needs: [verify, image]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check both architectures are present
+        env:
+          IMAGE: ${{ needs.verify.outputs.image }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          for arch in amd64 arm64; do
+            if ! docker buildx imagetools inspect "${IMAGE}:${VERSION}-${arch}" > /dev/null 2>&1; then
+              echo "::error::${IMAGE}:${VERSION}-${arch} is missing — the ${arch} image job did not publish."
+              exit 1
+            fi
+            echo "found ${IMAGE}:${VERSION}-${arch}"
+          done
+
+      - name: Create the multi-arch manifest
+        env:
+          IMAGE: ${{ needs.verify.outputs.image }}
+          VERSION: ${{ needs.verify.outputs.version }}
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          MAJOR_MINOR="$(echo "$VERSION" | cut -d. -f1,2)"
+          TAGS=(-t "${IMAGE}:${VERSION}" -t "${IMAGE}:${MAJOR_MINOR}")
+          # Only stable releases move `latest`.
+          if [ "$PRERELEASE" != "true" ]; then TAGS+=(-t "${IMAGE}:latest"); fi
+          docker buildx imagetools create "${TAGS[@]}" \
+            "${IMAGE}:${VERSION}-amd64" "${IMAGE}:${VERSION}-arm64"
+          docker buildx imagetools inspect "${IMAGE}:${VERSION}"
+
+  # ── 5. GitHub Release with every artifact attached ──────────────────────────
+  release:
+    name: Publish GitHub Release
+    needs: [verify, dist, image, manifest]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS
+        run: |
+          set -euo pipefail
+          cd artifacts
+          sha256sum clawperf-*.whl clawperf-*.tar.gz > SHA256SUMS
+          echo "=== artifacts ==="
+          ls -lh
+          echo "=== SHA256SUMS ==="
+          cat SHA256SUMS
+
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.verify.outputs.tag }}
+          VERSION: ${{ needs.verify.outputs.version }}
+          IMAGE: ${{ needs.verify.outputs.image }}
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+
+          cat > notes.md <<EOF
+          ## 🐳 Container images
+
+          Multi-arch (linux/amd64 + linux/arm64):
+
+          \`\`\`bash
+          docker pull ${IMAGE}:${VERSION}
+          docker pull ${IMAGE}:latest
+          \`\`\`
+
+          \`\`\`bash
+          docker run --rm --net=host -v "\$PWD/results:/app/results" \\
+            ${IMAGE}:${VERSION} \\
+            --mode scenario --endpoint http://127.0.0.1:8000/v1 --model qwen3 \\
+            --output /app/results/run.json
+          \`\`\`
+
+          ### Offline / air-gapped install (no registry access)
+
+          \`\`\`bash
+          # linux/amd64
+          gunzip -c clawperf-${VERSION}-linux-amd64.tar.gz | docker load
+          # linux/arm64 (e.g. Ascend 910B / aarch64 servers)
+          gunzip -c clawperf-${VERSION}-linux-arm64.tar.gz | docker load
+          docker images | grep clawperf
+          \`\`\`
+
+          ## 📦 Python packages
+
+          The wheel ships every optional extra; install the ones you need:
+
+          \`\`\`bash
+          pip install clawperf-${VERSION}-py3-none-any.whl
+          pip install "clawperf[agent,record,replay,mock-server] @ file://\$PWD/clawperf-${VERSION}-py3-none-any.whl"
+          \`\`\`
+
+          ## Assets
+
+          | File | Description |
+          | --- | --- |
+          | \`clawperf-${VERSION}-py3-none-any.whl\` | Universal wheel (Python 3.10+, all extras available) |
+          | \`clawperf-${VERSION}.tar.gz\` | Source distribution |
+          | \`clawperf-${VERSION}-linux-amd64.tar.gz\` | Offline Docker image (x86_64) |
+          | \`clawperf-${VERSION}-linux-arm64.tar.gz\` | Offline Docker image (aarch64) |
+          | \`SHA256SUMS\` | Checksums for the wheels and image tarballs |
+
+          Verify a download with \`sha256sum -c SHA256SUMS\`.
+
+          See [docs/E2E_TEST_REPORT.md](https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/docs/E2E_TEST_REPORT.md)
+          for the end-to-end validation report behind this release.
+          EOF
+
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG exists — uploading artifacts (--clobber) and refreshing notes."
+            gh release upload "$TAG" artifacts/* --clobber
+            gh release edit "$TAG" --title "ClawPerf ${VERSION}" --notes-file notes.md
+          else
+            FLAGS=()
+            if [ "$PRERELEASE" = "true" ]; then FLAGS+=(--prerelease); fi
+            gh release create "$TAG" \
+              --title "ClawPerf ${VERSION}" \
+              --notes-file notes.md \
+              --verify-tag \
+              "${FLAGS[@]}" \
+              artifacts/*
+          fi
+
+      - name: Release summary
+        env:
+          TAG: ${{ needs.verify.outputs.tag }}
+          IMAGE: ${{ needs.verify.outputs.image }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          {
+            echo "## ✅ Released $TAG"
+            echo ""
+            echo "| Artifact | Value |"
+            echo "| --- | --- |"
+            echo "| Image | \`${IMAGE}:${VERSION}\` |"
+            echo "| Wheel | \`clawperf-${VERSION}-py3-none-any.whl\` |"
+            echo "| Offline amd64 | \`clawperf-${VERSION}-linux-amd64.tar.gz\` |"
+            echo "| Offline arm64 | \`clawperf-${VERSION}-linux-arm64.tar.gz\` |"
+          } >> "$GITHUB_STEP_SUMMARY"

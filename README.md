@@ -1,5 +1,7 @@
 # ClawPerf
 
+[![CI](https://github.com/ucm-system/ClawPerf/actions/workflows/ci.yml/badge.svg)](https://github.com/ucm-system/ClawPerf/actions/workflows/ci.yml)
+[![Release](https://github.com/ucm-system/ClawPerf/actions/workflows/release.yml/badge.svg)](https://github.com/ucm-system/ClawPerf/actions/workflows/release.yml)
 [![PyPI Version](https://img.shields.io/pypi/v/clawperf.svg)](https://pypi.org/project/clawperf/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/clawperf.svg)](https://pypi.org/project/clawperf/)
 [![License](https://img.shields.io/pypi/l/clawperf.svg)](https://github.com/ucm-system/ClawPerf/blob/main/LICENSE)
@@ -59,6 +61,30 @@ pip install -e ".[dev]"
 Notes:
 - **Windows**: works out of the box — ClawPerf forces UTF-8 console I/O so help text and reports (✓/✅/█) never crash on GBK code pages, and JSONL readers accept UTF-8 BOM files.
 - **No GPU / CI**: `clawperf-mock-server` provides a full fake endpoint (trie prefix cache + `/metrics`) — every mode except `agent`/`trace`-replay runs against it; hit-rate targets are verified end-to-end (see the E2E report).
+
+### Container image
+
+Every release publishes a multi-arch image (`linux/amd64` + `linux/arm64`, incl. Ascend/aarch64 hosts) with all optional extras preinstalled:
+
+```bash
+docker pull ghcr.io/ucm-system/clawperf:latest
+docker pull ghcr.io/ucm-system/clawperf:0.6.0        # pin a version
+
+# benchmark a service on the host (host networking keeps 127.0.0.1 working)
+docker run --rm --net=host -v "$PWD/results:/app/results" \
+  ghcr.io/ucm-system/clawperf:0.6.0 \
+  --mode scenario --endpoint http://127.0.0.1:8000/v1 --model qwen3 \
+  --output /app/results/run.json
+```
+
+Runs as a non-root user, ships the bundled `examples/` traces and a local tokenizer, and writes its result history to the `/app/results` volume.
+
+**Air-gapped / offline install** — each release also attaches per-architecture image tarballs:
+
+```bash
+gunzip -c clawperf-0.6.0-linux-amd64.tar.gz | docker load   # or -linux-arm64.tar.gz
+docker images | grep clawperf
+```
 
 ## Quick Start
 
@@ -261,6 +287,28 @@ backend: vllm
 | trace | `--trace-file --cache-budget-tokens/--cache-budget-gb --eviction-policy --trace-block-size --budget-sweep --trace-users --kv-bytes-per-token --model-context-length` |
 | Shared concurrency | `--concurrency` (request-level: hitrate/replay/trace); `--trace-users` (session-level: trace) |
 | Metrics | `--metrics-endpoint` (repeatable / comma-separated; `name=url` labels) `--metrics-interval --metrics-samples --reset-cache --backend` |
+| Pacing | `--user-arrival` (when sessions *join*) and `--request-rate` (requests/second, open-loop) |
+
+### Request rate: open-loop vs closed-loop
+
+Three different knobs, often confused:
+
+| Knob | Controls | Semantics |
+|------|----------|-----------|
+| `--user-arrival burst\|steady:<s>\|poisson:<λ>` | when each **session/user joins** the benchmark | users then run their turns back-to-back |
+| `--concurrency N` | **closed-loop** in-flight request cap (hitrate / replay / trace) | next request starts as soon as one finishes — the server throttles the load |
+| `--request-rate R` | **open-loop** request issue rate in req/s | requests are released on a Poisson process at R req/s *regardless of completions* (the `benchmark_serving --request-rate` semantics) |
+
+Closed-loop answers "how fast can the server go at N in flight"; open-loop answers "what happens when traffic arrives at R req/s" — the two are not interchangeable, because a closed loop can never overload the server while an open loop can.
+
+```bash
+# 40 requests arriving at 2 req/s (Poisson) — no in-flight cap
+clawperf --mode hitrate --endpoint http://localhost:8000/v1 --model qwen3 \
+  --num-requests 40 --input-len 4096 --hit-rate 0.5 \
+  --request-rate 2
+```
+
+When `--request-rate` is set, `--concurrency` is ignored (true open-loop) and the summary reports the target vs achieved rate plus release skew, e.g. `Release Skew avg/max 1.2 / 8.4 ms`. Applies to `hitrate`, `replay` and `trace` real replay; `scenario`/`slo`/`agent` stay closed-loop multi-turn (that is the agent workload model — an agent fires its next request as soon as the previous one returns).
 
 ### Multi-instance & PD-disaggregated metrics
 
@@ -348,8 +396,41 @@ run against a vLLM-Ascend endpoint covering all 7 modes + 3 subcommands
 ```bash
 pip install -e ".[dev]"
 pytest
-ruff check src/
+ruff check src/ tests/
 ```
+
+### CI
+
+| Workflow | Trigger | What it does |
+|----------|---------|--------------|
+| [`ci.yml`](.github/workflows/ci.yml) | push to `main`, pull requests | `ruff check`, the test suite on Linux (3.10–3.13) + Windows/macOS, and a packaging smoke test (build → `twine check` → install the wheel in a clean venv → run both entry points) |
+| [`release.yml`](.github/workflows/release.yml) | tag `v*` (or manual dispatch) | test gate → sdist + wheel → native `linux/amd64` and `linux/arm64` images pushed to ghcr.io → multi-arch manifest → GitHub Release with every artifact attached |
+
+### Releasing
+
+Releases are tag-driven — bump the version, tag, push:
+
+```bash
+# 1. bump src/clawperf/__init__.py  __version__ = "0.7.0"
+# 2. commit, then tag and push
+git commit -am "chore: release v0.7.0"
+git tag v0.7.0 && git push origin main v0.7.0
+```
+
+The `verify` job fails fast if the tag does not match `clawperf.__version__`, so the two can never drift.
+
+The release then produces:
+
+| Artifact | Notes |
+|----------|-------|
+| `clawperf-<v>-py3-none-any.whl` | universal wheel — one file, all extras available |
+| `clawperf-<v>.tar.gz` | source distribution |
+| `clawperf-<v>-linux-amd64.tar.gz` / `-linux-arm64.tar.gz` | offline Docker images (`docker load`) |
+| `SHA256SUMS` | checksums for the wheels and image tarballs |
+
+Container tags: `:<version>`, `:<major>.<minor>` and `:latest` (prerelease tags such as `v0.7.0-rc1` publish without moving `latest`). Images are built **natively per architecture** — `ubuntu-latest` for amd64, `ubuntu-24.04-arm` for arm64 — so no QEMU emulation is involved; re-dispatch the workflow with `arm_runner: ubuntu-latest` if the ARM runner is unavailable.
+
+One-time repository setup: **Settings → Actions → General → Workflow permissions → Read and write** (so `GITHUB_TOKEN` may push to ghcr.io), and make the package public under the org's **Packages → clawperf → Package settings** if anonymous pulls are wanted.
 
 ## License
 
