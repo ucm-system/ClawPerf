@@ -2,13 +2,14 @@
 
 [![CI](https://github.com/ucm-system/ClawPerf/actions/workflows/ci.yml/badge.svg)](https://github.com/ucm-system/ClawPerf/actions/workflows/ci.yml)
 [![Release](https://github.com/ucm-system/ClawPerf/actions/workflows/release.yml/badge.svg)](https://github.com/ucm-system/ClawPerf/actions/workflows/release.yml)
+[![Site](https://img.shields.io/badge/site-ucm--system.github.io-blue)](https://ucm-system.github.io/ClawPerf/)
 [![PyPI Version](https://img.shields.io/pypi/v/clawperf.svg)](https://pypi.org/project/clawperf/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/clawperf.svg)](https://pypi.org/project/clawperf/)
 [![License](https://img.shields.io/pypi/l/clawperf.svg)](https://github.com/ucm-system/ClawPerf/blob/main/LICENSE)
 
 Performance benchmarking tool for LLM serving backends (vLLM / SGLang / MindIE / vllm-ascend) under **real agent workloads** — multi-turn, long-context, prefix-cache-heavy traffic.
 
-[中文文档](README_CN.md)
+📖 **[Project site](https://ucm-system.github.io/ClawPerf/)** (bilingual, with the workload and pipeline diagrams) · [中文文档](README_CN.md)
 
 Built on [EvalScope](https://github.com/modelscope/evalscope)'s perf infrastructure, ClawPerf measures how an inference stack behaves when actual coding agents hammer it: growing contexts, shared prefixes between turns, tool calls, and concurrent sessions.
 
@@ -403,8 +404,22 @@ ruff check src/ tests/
 
 | Workflow | Trigger | What it does |
 |----------|---------|--------------|
-| [`ci.yml`](.github/workflows/ci.yml) | push to `main`, pull requests | `ruff check`, the test suite on Linux (3.10–3.13) + Windows/macOS, and a packaging smoke test (build → `twine check` → install the wheel in a clean venv → run both entry points) |
+| [`ci.yml`](.github/workflows/ci.yml) | push to `main`, pull requests | `ruff check`, the test suite on Linux (3.10–3.13) + Windows/macOS, a packaging smoke test (build → `twine check` → install the wheel in a clean venv → run both entry points), and native Docker image builds for amd64 **and** arm64 with an in-image functional check |
 | [`release.yml`](.github/workflows/release.yml) | tag `v*` (or manual dispatch) | test gate → sdist + wheel → native `linux/amd64` and `linux/arm64` images pushed to ghcr.io → multi-arch manifest → GitHub Release with every artifact attached |
+| [`pages.yml`](.github/workflows/pages.yml) | push to `main` touching `docs/` | validates the site (asset paths, tag balance, SVG XML) and deploys it to GitHub Pages |
+
+### Project site
+
+The landing page lives in `docs/` and is deployed to **https://ucm-system.github.io/ClawPerf/** by `pages.yml`.
+
+```bash
+python3 scripts/check_site.py docs     # validate before pushing (assets, tags, SVG XML)
+python3 -m http.server -d docs 8000    # preview locally at http://localhost:8000
+```
+
+It is a single self-contained `index.html` (no build step, no CDN, no external fonts) with inline SVG figures in `docs/assets/`, an EN/中文 toggle and light/dark themes. Adding a diagram means dropping an SVG into `docs/assets/` and referencing it — the check script enforces that every reference resolves.
+
+One-time setup: **Settings → Pages → Build and deployment → Source = GitHub Actions**.
 
 ### Releasing
 

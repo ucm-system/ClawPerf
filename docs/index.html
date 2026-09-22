@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en" data-lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClawPerf — LLM serving benchmarks under real agent workloads</title>
+<meta name="description" content="ClawPerf benchmarks vLLM / SGLang / MindIE / vllm-ascend under real agent traffic: multi-turn long-context sessions, prefix-cache reuse, tool calls, SLO capacity sweeps and PD-disaggregated metrics.">
+<link rel="canonical" href="https://ucm-system.github.io/ClawPerf/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ClawPerf — LLM serving benchmarks under real agent workloads">
+<meta property="og:description" content="Seven benchmark modes, one CLI: multi-turn long-context workload, prefix-cache hit rate, SLO capacity sweep, real tool-calling agents, trace replay, record & replay.">
+<meta property="og:url" content="https://ucm-system.github.io/ClawPerf/">
+<meta name="theme-color" content="#0f172a">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f172a'/%3E%3Cg fill='%2338bdf8'%3E%3Crect x='7' y='17' width='4' height='8' rx='1'/%3E%3Crect x='14' y='12' width='4' height='13' rx='1'/%3E%3Crect x='21' y='7' width='4' height='18' rx='1'/%3E%3C/g%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-soft: #f8fafc;
+    --card: #ffffff;
+    --border: #e2e8f0;
+    --text: #0f172a;
+    --text-soft: #475569;
+    --text-muted: #64748b;
+    --accent: #0284c7;
+    --accent-soft: #e0f2fe;
+    --green: #15803d;
+    --green-soft: #dcfce7;
+    --amber: #b45309;
+    --amber-soft: #fef3c7;
+    --code-bg: #0f172a;
+    --code-text: #e2e8f0;
+    --shadow: 0 1px 2px rgba(15, 23, 42, .06), 0 8px 24px rgba(15, 23, 42, .06);
+  }
+  html[data-theme="dark"] {
+    --bg: #0b1220;
+    --bg-soft: #0f172a;
+    --card: #111c33;
+    --border: #1e293b;
+    --text: #e8eef8;
+    --text-soft: #b6c2d4;
+    --text-muted: #8b9ab1;
+    --accent: #38bdf8;
+    --accent-soft: #0b2942;
+    --green: #4ade80;
+    --green-soft: #0d2a1c;
+    --amber: #fbbf24;
+    --amber-soft: #33260a;
+    --code-bg: #060b16;
+    --code-text: #dbe6f5;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 30px rgba(0, 0, 0, .35);
+  }
+  /* No-JS fallback: honour the OS preference while the choice is still "auto". */
+  @media (prefers-color-scheme: dark) {
+    html[data-theme="auto"] {
+      --bg: #0b1220;
+      --bg-soft: #0f172a;
+      --card: #111c33;
+      --border: #1e293b;
+      --text: #e8eef8;
+      --text-soft: #b6c2d4;
+      --text-muted: #8b9ab1;
+      --accent: #38bdf8;
+      --accent-soft: #0b2942;
+      --green: #4ade80;
+      --green-soft: #0d2a1c;
+      --amber: #fbbf24;
+      --amber-soft: #33260a;
+      --code-bg: #060b16;
+      --code-text: #dbe6f5;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 30px rgba(0, 0, 0, .35);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', -apple-system,
+                 BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+
+  /* language switching: both trees are in the DOM, CSS picks one */
+  html[data-lang="en"] .zh { display: none; }
+  html[data-lang="zh"] .en { display: none; }
+  html[data-lang="zh"] body { line-height: 1.8; }
+
+  header.top {
+    position: sticky; top: 0; z-index: 20;
+    background: var(--bg);                      /* fallback for no color-mix() */
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .top-inner { display: flex; align-items: center; gap: 16px; padding: 12px 0; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; color: var(--text); }
+  .brand:hover { text-decoration: none; }
+  .brand svg { display: block; }
+  nav.links { display: flex; gap: 18px; margin-left: auto; flex-wrap: wrap; }
+  nav.links a { color: var(--text-soft); font-size: 14px; }
+  .toggles { display: flex; gap: 8px; }
+  button.toggle {
+    font: inherit; font-size: 13px; color: var(--text-soft);
+    background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px;
+    padding: 5px 10px; cursor: pointer;
+  }
+  button.toggle:hover { border-color: var(--accent); color: var(--accent); }
+
+  .hero { padding: 64px 0 32px; }
+  .hero h1 { font-size: clamp(30px, 5vw, 46px); line-height: 1.2; margin: 0 0 12px; letter-spacing: -.02em; }
+  .hero .lead { font-size: clamp(16px, 2.2vw, 19px); color: var(--text-soft); max-width: 760px; margin: 0 0 22px; }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 28px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 16px; border-radius: 10px; font-size: 14px; font-weight: 600;
+    border: 1px solid var(--border); background: var(--card); color: var(--text);
+  }
+  .btn:hover { text-decoration: none; border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { filter: brightness(1.08); }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .stat { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .stat b { display: block; font-size: 22px; line-height: 1.2; }
+  .stat span { font-size: 13px; color: var(--text-muted); }
+
+  section { padding: 40px 0; border-top: 1px solid var(--border); }
+  section > .wrap > h2 { font-size: 24px; margin: 0 0 8px; letter-spacing: -.01em; }
+  section > .wrap > p.sub { color: var(--text-muted); margin: 0 0 24px; max-width: 780px; }
+
+  .grid { display: grid; gap: 16px; }
+  .grid.c2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .grid.c3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; box-shadow: var(--shadow); }
+  .card h3 { margin: 0 0 8px; font-size: 16px; }
+  .card p { margin: 0; color: var(--text-soft); font-size: 14.5px; }
+  .card .tag { display: inline-block; font-size: 12px; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 2px 10px; margin-bottom: 10px; }
+
+  figure { margin: 26px 0 0; }
+  figure .frame {
+    /* diagrams keep a light card in both themes so the figure is always legible */
+    background: #ffffff; border: 1px solid var(--border); border-radius: 14px; padding: 16px;
+    overflow-x: auto;
+  }
+  figure img { display: block; width: 100%; max-width: 800px; height: auto; margin: 0 auto; }
+  figcaption { color: var(--text-muted); font-size: 13px; margin-top: 10px; text-align: center; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--text-muted); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
+  tbody tr:last-child td { border-bottom: none; }
+  .tbl-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 14px; background: var(--card); box-shadow: var(--shadow); }
+  code, kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 13px; }
+  code.inline { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; }
+  pre {
+    margin: 0; background: var(--code-bg); color: var(--code-text);
+    border-radius: 14px; padding: 18px; overflow-x: auto; font-size: 13px; line-height: 1.6;
+    border: 1px solid var(--border);
+  }
+  pre .c { color: #7dd3fc; }
+  pre .m { color: #86efac; }
+
+  .bars { display: grid; gap: 10px; margin-top: 6px; }
+  .bar { display: grid; grid-template-columns: 96px 1fr 92px; align-items: center; gap: 12px; font-size: 13.5px; }
+  .bar .track { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 999px; height: 10px; overflow: hidden; }
+  .bar .fill { height: 100%; background: var(--accent); border-radius: 999px; }
+  .bar .val { text-align: right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+  .pill { display: inline-block; font-size: 12.5px; border: 1px solid var(--border); background: var(--bg-soft); border-radius: 999px; padding: 3px 11px; margin: 0 6px 6px 0; color: var(--text-soft); }
+  .ok { color: var(--green); background: var(--green-soft); border-color: transparent; }
+  .warn { color: var(--amber); background: var(--amber-soft); border-color: transparent; }
+
+  footer { border-top: 1px solid var(--border); padding: 28px 0 48px; color: var(--text-muted); font-size: 14px; }
+  footer .cols { display: flex; flex-wrap: wrap; gap: 28px; }
+  footer h4 { margin: 0 0 6px; font-size: 13px; color: var(--text-soft); text-transform: uppercase; letter-spacing: .04em; }
+  footer ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+
+  @media (max-width: 720px) {
+    nav.links { display: none; }
+    .bar { grid-template-columns: 76px 1fr 80px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap top-inner">
+    <a class="brand" href="#top">
+      <svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="7" fill="#0f172a"/>
+        <g fill="#38bdf8">
+          <rect x="7" y="17" width="4" height="8" rx="1"/>
+          <rect x="14" y="12" width="4" height="13" rx="1"/>
+          <rect x="21" y="7" width="4" height="18" rx="1"/>
+        </g>
+      </svg>
+      ClawPerf
+    </a>
+    <nav class="links">
+      <a href="#why"><span class="en">Why</span><span class="zh">为什么</span></a>
+      <a href="#modes"><span class="en">Modes</span><span class="zh">模式</span></a>
+      <a href="#results"><span class="en">Results</span><span class="zh">实测结果</span></a>
+      <a href="#start"><span class="en">Quick start</span><span class="zh">快速开始</span></a>
+      <a href="#config"><span class="en">Config</span><span class="zh">配置</span></a>
+      <a href="https://github.com/ucm-system/ClawPerf">GitHub</a>
+    </nav>
+    <div class="toggles">
+      <button class="toggle" id="lang-btn" type="button" aria-label="Switch language">中文</button>
+      <button class="toggle" id="theme-btn" type="button" aria-label="Switch theme">◐</button>
+    </div>
+  </div>
+</header>
+
+<a id="top"></a>
+<div class="hero wrap">
+  <h1>ClawPerf</h1>
+  <p class="lead en">Benchmark LLM serving under <strong>real agent workloads</strong> — multi-turn, long-context, prefix-cache-heavy traffic. Seven modes, one CLI, built on <a href="https://github.com/modelscope/evalscope">EvalScope</a>.</p>
+  <p class="lead zh">面向 <strong>真实 Agent 负载</strong>的 LLM 推理服务性能基准 —— 多轮对话、长上下文、前缀缓存密集的流量。七种模式，一个 CLI，构建在 <a href="https://github.com/modelscope/evalscope">EvalScope</a> 之上。</p>
+
+  <div class="cta">
+    <a class="btn primary" href="#start"><span class="en">Get started</span><span class="zh">快速开始</span></a>
+    <a class="btn" href="https://github.com/ucm-system/ClawPerf">GitHub</a>
+    <a class="btn" href="https://github.com/ucm-system/ClawPerf/releases"><span class="en">Releases &amp; images</span><span class="zh">发行版与镜像</span></a>
+    <a class="btn" href="https://github.com/ucm-system/ClawPerf/blob/main/docs/E2E_TEST_REPORT.md"><span class="en">E2E test report</span><span class="zh">端到端测试报告</span></a>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><b>7</b><span class="en">benchmark modes</span><span class="zh">基准模式</span></div>
+    <div class="stat"><b>4</b><span class="en">backends: vLLM · SGLang · MindIE · vllm-ascend</span><span class="zh">后端：vLLM · SGLang · MindIE · vllm-ascend</span></div>
+    <div class="stat"><b>290</b><span class="en">unit tests in CI</span><span class="zh">CI 单元测试</span></div>
+    <div class="stat"><b>amd64 + arm64</b><span class="en">native multi-arch images</span><span class="zh">原生双架构镜像</span></div>
+  </div>
+</div>
+
+<section id="why">
+  <div class="wrap">
+    <h2><span class="en">Why agent workloads break single-shot benchmarks</span><span class="zh">为什么单次请求压不出 Agent 负载的真实表现</span></h2>
+    <p class="sub en">A coding agent does not send one prompt. It grows a conversation, reuses a shared prefix every turn, calls tools, and runs many sessions at once. ClawPerf models exactly that.</p>
+    <p class="sub zh">编码 Agent 不会只发一次请求：它让上下文不断增长、每轮复用同一段前缀、调用工具，并且多个会话并发。ClawPerf 正是对这些行为建模。</p>
+
+    <div class="grid c2">
+      <div class="card">
+        <span class="tag">01</span>
+        <h3><span class="en">Multi-turn, growing context</span><span class="zh">多轮、增长的上下文</span></h3>
+        <p class="en">N concurrent users keep independent conversations; every turn appends to history, and compaction kicks in when the window is reached. TTFT is measured as context grows from 7K to 100K+ tokens.</p>
+        <p class="zh">N 个并发用户各自维护独立会话；每轮追加历史，触及窗口上限时触发压缩。TTFT 在上下文从 7K 增长到 100K+ token 的过程中被持续测量。</p>
+      </div>
+      <div class="card">
+        <span class="tag">02</span>
+        <h3><span class="en">Prefix-cache reuse, measured at token level</span><span class="zh">前缀缓存复用：token 级实测</span></h3>
+        <p class="en">Hit rate is read from the backend's Prometheus counters (<code class="inline">prefix_cache_hits/queries</code>) as a start/end delta — with a controlled test that verifies a <em>target</em> hit rate against the <em>measured</em> one.</p>
+        <p class="zh">命中率取自后端 Prometheus 计数器（<code class="inline">prefix_cache_hits/queries</code>）的起止差值；并提供受控测试，把<em>目标</em>命中率与<em>实测</em>值对照验证。</p>
+      </div>
+      <div class="card">
+        <span class="tag">03</span>
+        <h3><span class="en">Real tool calls, not simulated ones</span><span class="zh">真实工具调用</span></h3>
+        <p class="en">In <code class="inline">agent</code> mode the model actually calls functions — read/write files, run shell commands — through OpenAI function calling across a growing context.</p>
+        <p class="zh"><code class="inline">agent</code> 模式下模型真的通过 OpenAI function calling 调用工具 —— 读写文件、执行 shell —— 上下文随之增长。</p>
+      </div>
+      <div class="card">
+        <span class="tag">04</span>
+        <h3><span class="en">Capacity, open-loop rate, PD separation</span><span class="zh">容量、开环速率、PD 分离</span></h3>
+        <p class="en">Sweep concurrency against SLOs, drive traffic open-loop at R req/s, and aggregate metrics from every prefill/decode instance of a disaggregated deployment.</p>
+        <p class="zh">按 SLO 扫描并发、以 R req/s 开环施压、并把 PD 分离部署中每个 prefill/decode 实例的指标聚合起来。</p>
+      </div>
+    </div>
+
+    <figure>
+      <div class="frame">
+        <img src="assets/workload.svg" alt="Turns 1 to 3 of an agent session: each request reuses the system prefix, user prefix and conversation history from the prefix cache, with only the newest input cold-prefilled">
+      </div>
+      <figcaption>
+        <span class="en">Each turn reuses everything the previous turn already prefilled — the workload a single-request benchmark cannot see.</span>
+        <span class="zh">每一轮都复用了上一轮已预填充的内容 —— 这正是单请求压测看不到的负载特征。</span>
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<section id="modes">
+  <div class="wrap">
+    <h2><span class="en">Seven modes, three subcommands</span><span class="zh">七种模式 + 三个子命令</span></h2>
+    <p class="sub en">Pick the question you need answered; each mode writes a JSON result plus a Markdown report with a verdict.</p>
+    <p class="sub zh">按你要回答的问题选模式；每种模式都会产出 JSON 结果与带结论的 Markdown 报告。</p>
+
+    <div class="tbl-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th><span class="en">Mode</span><span class="zh">模式</span></th>
+            <th><span class="en">Question it answers</span><span class="zh">回答什么问题</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><code>scenario</code></td><td><span class="en">How does the stack behave under N concurrent growing conversations? (default mode)</span><span class="zh">N 个并发增长会话下，服务表现如何？（默认模式）</span></td></tr>
+          <tr><td><code>hitrate</code></td><td><span class="en">Does the prefix cache actually deliver the hit rate I designed for?</span><span class="zh">前缀缓存真的达到了我设计的目标命中率吗？</span></td></tr>
+          <tr><td><code>slo</code></td><td><span class="en">What is the maximum concurrency that still meets my latency budget?</span><span class="zh">满足时延预算的最大并发是多少？</span></td></tr>
+          <tr><td><code>agent</code></td><td><span class="en">What does a real tool-calling agent cost in latency and tokens?</span><span class="zh">真实工具调用 Agent 的时延与 token 成本是多少？</span></td></tr>
+          <tr><td><code>trace</code></td><td><span class="en">How much reuse does my real session data contain, and what does it cost to replay?</span><span class="zh">真实会话数据里有多少可复用前缀？回放它代价多大？</span></td></tr>
+          <tr><td><code>record</code></td><td><span class="en">Capture a live agent session (OpenAI or Anthropic clients) as replayable JSONL.</span><span class="zh">把线上 Agent 会话（OpenAI 或 Anthropic 客户端）录成可回放的 JSONL。</span></td></tr>
+          <tr><td><code>replay</code></td><td><span class="en">Replay that recording against any endpoint, with live history so prefixes stay aligned.</span><span class="zh">把录制回放到任意端点，live 历史保证前缀对齐。</span></td></tr>
+          <tr><td><code>report</code> · <code>compare</code> · <code>trace-convert</code></td><td><span class="en">Regenerate a report, diff two runs side by side, convert external trace datasets.</span><span class="zh">重生成报告、两个结果对比、外部 trace 数据集转换。</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="results">
+  <div class="wrap">
+    <h2><span class="en">Measured, not claimed</span><span class="zh">实测数据，而非宣传</span></h2>
+    <p class="sub en">From the end-to-end run in <a href="https://github.com/ucm-system/ClawPerf/blob/main/docs/E2E_TEST_REPORT.md">docs/E2E_TEST_REPORT.md</a>: vLLM-Ascend v0.23.0, Qwen3-0.6B, one Ascend 910B3, driven from a Windows client.</p>
+    <p class="sub zh">数据来自 <a href="https://github.com/ucm-system/ClawPerf/blob/main/docs/E2E_TEST_REPORT.md">docs/E2E_TEST_REPORT.md</a> 的端到端测试：vLLM-Ascend v0.23.0 + Qwen3-0.6B，单张昇腾 910B3，客户端为 Windows。</p>
+
+    <div class="grid c3">
+      <div class="card">
+        <h3><span class="en">Hit rate is verifiable</span><span class="zh">命中率可验证</span></h3>
+        <p class="en"><strong>49.90%</strong> measured against a <strong>50.00%</strong> target — 40 requests, 2 distinct prefixes, concurrency 4, cache reset first.</p>
+        <p class="zh">目标 <strong>50.00%</strong>，实测 <strong>49.90%</strong> —— 40 个请求、2 个不同前缀、并发 4，先重置缓存。</p>
+      </div>
+      <div class="card">
+        <h3><span class="en">Real traces reuse a lot</span><span class="zh">真实 trace 复用率很高</span></h3>
+        <p class="en"><strong>90.42%</strong> prefix-reuse ceiling over 34 real Claude Code requests (3 sessions); replay of the fitting requests succeeded <strong>29/29</strong>.</p>
+        <p class="zh">34 个真实 Claude Code 请求（3 个会话）的复用上限 <strong>90.42%</strong>；可容纳的请求回放 <strong>29/29</strong> 成功。</p>
+      </div>
+      <div class="card">
+        <h3><span class="en">Capacity is a number</span><span class="zh">容量是一个确定的数</span></h3>
+        <p class="en"><strong>5 users</strong> sustained with <code class="inline">ttft.p99≤1500ms</code>, <code class="inline">tpot.avg≤30ms</code>, <code class="inline">e2e.max≤20s</code> — the binding constraint was end-to-end max, which TTFT alone would have missed.</p>
+        <p class="zh">在 <code class="inline">ttft.p99≤1500ms</code>、<code class="inline">tpot.avg≤30ms</code>、<code class="inline">e2e.max≤20s</code> 下可稳定支撑 <strong>5 个用户</strong> —— 真正的约束是端到端最大值，只看 TTFT 会误判。</p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3><span class="en">TTFT scales with concurrency (fresh profile, 10 turns/user)</span><span class="zh">TTFT 随并发增长（fresh 档位，每用户 10 轮）</span></h3>
+      <div class="bars">
+        <div class="bar"><span>1 <span class="en">user</span><span class="zh">用户</span></span><span class="track"><span class="fill" style="width:54%"></span></span><span class="val">203 ms</span></div>
+        <div class="bar"><span>4 <span class="en">users</span><span class="zh">用户</span></span><span class="track"><span class="fill" style="width:76%"></span></span><span class="val">290 ms</span></div>
+        <div class="bar"><span>8 <span class="en">users</span><span class="zh">用户</span></span><span class="track"><span class="fill" style="width:100%"></span></span><span class="val">379 ms</span></div>
+      </div>
+      <p style="margin-top:12px" class="en">130/130 turns succeeded across the whole suite, with no errors at 8 concurrent sessions.</p>
+      <p style="margin-top:12px" class="zh">整套 suite 130/130 轮全部成功，8 并发会话下零错误。</p>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3><span class="en">PD-disaggregated / multi-instance metrics</span><span class="zh">PD 分离 / 多实例指标聚合</span></h3>
+      <p class="en">Two vLLM instances behind a round-robin proxy, one benchmark run, metrics aggregated per instance:</p>
+      <p class="zh">两个 vLLM 实例 + 轮询代理，一次压测、按实例聚合指标：</p>
+      <div class="tbl-scroll" style="margin-top:12px; box-shadow:none">
+        <table>
+          <thead><tr><th>Engine</th><th>Query tokens</th><th>Hit tokens</th><th>Hit rate</th></tr></thead>
+          <tbody>
+            <tr><td><code>engine prefill:0</code></td><td>41,427</td><td>27,520</td><td>66.43%</td></tr>
+            <tr><td><code>engine decode:0</code></td><td>40,287</td><td>26,752</td><td>66.40%</td></tr>
+            <tr><td><strong>TOTAL</strong></td><td>81,714</td><td>54,272</td><td><strong>66.42%</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="margin-top:12px" class="en">Round-robin across two instances with independent caches cost only a duplicate cold fill (47.41% vs a 50% target) — prefix caches are content-addressed and fill lazily.</p>
+      <p style="margin-top:12px" class="zh">两个实例各自缓存、轮询路由只多付一次冷启动代价（目标 50%、实测 47.41%）—— 前缀缓存按内容寻址、按需填充。</p>
+    </div>
+
+    <figure>
+      <div class="frame">
+        <img src="assets/pipeline.svg" alt="ClawPerf pipeline: the seven workload modes drive a runner that sends requests to a serving backend and polls its metrics, producing results.json, report.md and history.jsonl">
+      </div>
+      <figcaption>
+        <span class="en">One runner drives the workload, polls metrics and writes the verdict.</span>
+        <span class="zh">同一个 Runner 负责施压、采集指标并给出结论。</span>
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<section id="start">
+  <div class="wrap">
+    <h2><span class="en">Quick start</span><span class="zh">快速开始</span></h2>
+    <p class="sub en">Everything below assumes a running OpenAI-compatible endpoint. No GPU? Start the bundled mock server and try the whole flow.</p>
+    <p class="sub zh">以下都假设已有一个 OpenAI 兼容端点。没有 GPU？用内置 mock server 就能跑通全流程。</p>
+
+    <div class="grid c2">
+      <div class="card">
+        <h3><span class="en">1 · pip</span><span class="zh">1 · pip 安装</span></h3>
+        <pre><code><span class="c"># core (scenario / hitrate / slo / trace)</span>
+pip install clawperf
+<span class="c"># extras as needed</span>
+pip install "clawperf[agent,record,replay,mock-server]"</code></pre>
+      </div>
+      <div class="card">
+        <h3><span class="en">2 · container (amd64 + arm64)</span><span class="zh">2 · 容器（amd64 + arm64）</span></h3>
+        <pre><code>docker pull ghcr.io/ucm-system/clawperf:latest
+docker run --rm --net=host \
+  -v "$PWD/results:/app/results" \
+  ghcr.io/ucm-system/clawperf:latest \
+  --mode hitrate --endpoint http://127.0.0.1:8000/v1 \
+  --model qwen3 --num-requests 40 --hit-rate 0.5 \
+  --output /app/results/hitrate.json</code></pre>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3><span class="en">3 · offline / air-gapped</span><span class="zh">3 · 离线 / 内网部署</span></h3>
+      <p class="en">Each release attaches per-architecture image tarballs next to the wheel and sdist.</p>
+      <p class="zh">每个发行版都会附上按架构打包的镜像包，以及 wheel 与源码包。</p>
+      <pre><code>gunzip -c clawperf-0.6.0-linux-arm64.tar.gz | docker load   <span class="c"># or -linux-amd64</span>
+sha256sum -c SHA256SUMS</code></pre>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3><span class="en">A first benchmark</span><span class="zh">跑第一个基准</span></h3>
+      <pre><code><span class="c"># multi-turn long-context workload, with Prometheus metrics</span>
+clawperf --mode scenario \
+  --endpoint http://localhost:8000/v1 --model qwen3 \
+  --context-profile fresh --num-users 4 --max-turns 10 \
+  --metrics-endpoint http://localhost:8000/metrics \
+  --output results.json
+
+<span class="m">Verdict: GOOD · prefix-cache hit 71.3% · TTFT P50 231 ms · 108 tok/s</span></code></pre>
+      <p style="margin-top:12px" class="en">Results land in <code class="inline">results.json</code> plus a Markdown report with a verdict and auto-generated findings.</p>
+      <p style="margin-top:12px" class="zh">结果写入 <code class="inline">results.json</code>，同时生成带结论与自动发现要点的 Markdown 报告。</p>
+    </div>
+  </div>
+</section>
+
+<section id="config">
+  <div class="wrap">
+    <h2><span class="en">The knobs that matter</span><span class="zh">真正重要的几个旋钮</span></h2>
+    <p class="sub en">Three pacing knobs that are easy to confuse, and two that change what a number means.</p>
+    <p class="sub zh">三个容易混淆的施压旋钮，以及两个会改变指标含义的选项。</p>
+
+    <div class="tbl-scroll">
+      <table>
+        <thead>
+          <tr><th><span class="en">Knob</span><span class="zh">旋钮</span></th><th><span class="en">What it controls</span><span class="zh">控制什么</span></th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>--user-arrival</code></td><td><span class="en">When each <em>session</em> joins: <code>burst</code>, <code>steady:&lt;s&gt;</code> or <code>poisson:&lt;λ&gt;</code>.</span><span class="zh">每个<em>会话</em>何时加入：<code>burst</code>、<code>steady:&lt;秒&gt;</code>、<code>poisson:&lt;λ&gt;</code>。</span></td></tr>
+          <tr><td><code>--concurrency</code></td><td><span class="en">Closed loop: at most N requests in flight; the backend throttles the load itself.</span><span class="zh">闭环：最多 N 个在途请求；负载节奏由服务端决定。</span></td></tr>
+          <tr><td><code>--request-rate</code></td><td><span class="en">Open loop: release requests at R req/s (Poisson) regardless of completions — this one <em>can</em> overload a server.</span><span class="zh">开环：按 R req/s（泊松）发请求，与是否完成无关 —— 只有它会真正压垮服务端。</span></td></tr>
+          <tr><td><code>--slo</code></td><td><span class="en">Composable targets: any of <code>ttft</code>/<code>tpot</code>/<code>e2e</code> × <code>avg</code>/<code>P50</code>/<code>P90</code>/<code>P99</code>/<code>max</code>, e.g. <code>--slo e2e.max&lt;=20s</code>.</span><span class="zh">可组合目标：<code>ttft</code>/<code>tpot</code>/<code>e2e</code> × <code>avg</code>/<code>P50</code>/<code>P90</code>/<code>P99</code>/<code>max</code>，例如 <code>--slo e2e.max&lt;=20s</code>。</span></td></tr>
+          <tr><td><code>--metrics-endpoint</code></td><td><span class="en">Repeatable: aggregate one Prometheus endpoint per instance (<code>prefill=…</code>, <code>decode=…</code>) into a single fleet-wide view.</span><span class="zh">可重复指定：把每个实例的 Prometheus 端点（<code>prefill=…</code>、<code>decode=…</code>）聚合成全局视图。</span></td></tr>
+          <tr><td><code>--model-context-length</code></td><td><span class="en">Clamp trace-replay output length to the window; requests that cannot fit are skipped with a clear reason.</span><span class="zh">把 trace 回放的输出长度裁剪到窗口内；放不下的请求会带明确原因跳过。</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3><span class="en">Context profiles</span><span class="zh">上下文档位</span></h3>
+      <p class="en">Named sizes so you do not have to invent token counts, from <code class="inline">fresh</code> (7K) to <code class="inline">xxl</code> (392K). Suites run several (users × profile) combinations in sequence.</p>
+      <p class="zh">预设规模，免去自己拼 token 数：从 <code class="inline">fresh</code>（7K）到 <code class="inline">xxl</code>（392K）。suite 会按 (用户数 × 档位) 依次跑多组场景。</p>
+      <p style="margin-top:12px">
+        <span class="pill">fresh 7K</span><span class="pill">short 22K</span><span class="pill">medium 43K</span><span class="pill">long 75K</span><span class="pill">full 105K</span><span class="pill">xl 205K</span><span class="pill">xxl 392K</span>
+      </p>
+      <p style="margin-top:6px">
+        <span class="pill ok">suite quick</span><span class="pill ok">suite standard</span><span class="pill ok">suite full</span><span class="pill ok">suite hitrate</span>
+      </p>
+    </div>
+  </div>
+</section>
+
+<section id="ecosystem">
+  <div class="wrap">
+    <h2><span class="en">Works with your stack</span><span class="zh">与你的技术栈配合</span></h2>
+    <div class="grid c3">
+      <div class="card">
+        <h3><span class="en">Backends</span><span class="zh">推理后端</span></h3>
+        <p class="en">vLLM, SGLang, MindIE and vllm-ascend. Metrics mapping is per backend, and multi-engine / multi-instance counters are handled.</p>
+        <p class="zh">vLLM、SGLang、MindIE、vllm-ascend。指标映射按后端区分，并支持多引擎 / 多实例计数器。</p>
+      </div>
+      <div class="card">
+        <h3><span class="en">Trace formats</span><span class="zh">Trace 格式</span></h3>
+        <p class="en"><code class="inline">trace-convert</code> reads Claude Code sessions, ShareGPT/Hermes conversations and OpenAI message exports; UTF-8 BOM files are fine.</p>
+        <p class="zh"><code class="inline">trace-convert</code> 支持 Claude Code 会话、ShareGPT/Hermes 对话、OpenAI messages 导出；带 BOM 的文件也能读。</p>
+      </div>
+      <div class="card">
+        <h3><span class="en">No GPU? Mock server</span><span class="zh">没有 GPU？用 mock server</span></h3>
+        <p class="en"><code class="inline">clawperf-mock-server</code> is a fake endpoint with a trie prefix cache and vLLM-style <code class="inline">/metrics</code> — CI verifies hit-rate targets end to end against it.</p>
+        <p class="zh"><code class="inline">clawperf-mock-server</code> 提供带字典树前缀缓存与 vLLM 风格 <code class="inline">/metrics</code> 的假端点 —— CI 会用它端到端验证命中率目标。</p>
+      </div>
+      <div class="card">
+        <h3><span class="en">CI-friendly exit codes</span><span class="zh">适合 CI 的退出码</span></h3>
+        <p class="en"><code class="inline">0</code> ok · <code class="inline">1</code> config error · <code class="inline">2</code> all requests failed · <code class="inline">3</code> interrupted. Configuration mistakes print one actionable line instead of a traceback.</p>
+        <p class="zh"><code class="inline">0</code> 正常 · <code class="inline">1</code> 配置错误 · <code class="inline">2</code> 全部请求失败 · <code class="inline">3</code> 被中断。配置错误只打印一行可行动的提示，而不是堆栈。</p>
+      </div>
+      <div class="card">
+        <h3><span class="en">Release pipeline</span><span class="zh">发布流水线</span></h3>
+        <p class="en">Tagging <code class="inline">vX.Y.Z</code> builds the wheel, sdist, and native amd64/arm64 images, pushes to ghcr.io and attaches offline tarballs to the release.</p>
+        <p class="zh">打 <code class="inline">vX.Y.Z</code> tag 即自动构建 wheel、源码包与原生 amd64/arm64 镜像，推送到 ghcr.io 并把离线镜像包附到 Release。</p>
+      </div>
+      <div class="card">
+        <h3><span class="en">License</span><span class="zh">许可</span></h3>
+        <p class="en">Apache-2.0. Built on EvalScope's perf infrastructure, adding the agent workload model, trace tooling and reporting.</p>
+        <p class="zh">Apache-2.0。构建在 EvalScope 的 perf 基础设施之上，补充了 Agent 负载模型、trace 工具与报告能力。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap cols">
+    <div>
+      <h4><span class="en">Project</span><span class="zh">项目</span></h4>
+      <ul>
+        <li><a href="https://github.com/ucm-system/ClawPerf">GitHub</a></li>
+        <li><a href="https://github.com/ucm-system/ClawPerf/blob/main/README.md">README (EN)</a></li>
+        <li><a href="https://github.com/ucm-system/ClawPerf/blob/main/README_CN.md">README（中文）</a></li>
+        <li><a href="https://github.com/ucm-system/ClawPerf/blob/main/LICENSE">Apache-2.0</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4><span class="en">Benchmarks</span><span class="zh">基准与报告</span></h4>
+      <ul>
+        <li><a href="https://github.com/ucm-system/ClawPerf/blob/main/docs/E2E_TEST_REPORT.md"><span class="en">End-to-end test report</span><span class="zh">端到端测试报告</span></a></li>
+        <li><a href="https://github.com/ucm-system/ClawPerf/tree/main/results_e2e"><span class="en">Raw per-mode results</span><span class="zh">各模式原始结果</span></a></li>
+        <li><a href="https://github.com/ucm-system/ClawPerf/actions/workflows/ci.yml"><span class="en">CI status</span><span class="zh">CI 状态</span></a></li>
+      </ul>
+    </div>
+    <div>
+      <h4><span class="en">Packages</span><span class="zh">分发包</span></h4>
+      <ul>
+        <li><a href="https://github.com/ucm-system/ClawPerf/releases"><span class="en">Releases (wheel · sdist · offline images)</span><span class="zh">发行版（wheel · 源码包 · 离线镜像）</span></a></li>
+        <li><a href="https://github.com/ucm-system/ClawPerf/pkgs/container/clawperf"><span class="en">Container images</span><span class="zh">容器镜像</span></a></li>
+        <li><a href="https://pypi.org/project/clawperf/">PyPI</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="wrap" style="margin-top:22px">
+    <span class="en">ClawPerf — performance benchmarking for LLM serving backends under real agent workloads.</span>
+    <span class="zh">ClawPerf —— 面向真实 Agent 负载的 LLM 推理服务性能基准工具。</span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var store = {
+    get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  };
+
+  // ── theme ──────────────────────────────────────────────────────────────
+  var savedTheme = store.get('clawperf-theme');
+  var mq = window.matchMedia('(prefers-color-scheme: dark)');
+  function applyTheme() {
+    var t = root.getAttribute('data-theme');
+    var dark = t === 'dark' || (t === 'auto' && mq.matches);
+    root.setAttribute('data-theme', dark ? 'dark' : 'light');
+    root.setAttribute('data-theme-choice', t);
+  }
+  root.setAttribute('data-theme', savedTheme || 'auto');
+  applyTheme();
+  if (mq.addEventListener) { mq.addEventListener('change', function () { if (root.getAttribute('data-theme-choice') === 'auto') applyTheme(); }); }
+
+  // ── language ───────────────────────────────────────────────────────────
+  var savedLang = store.get('clawperf-lang');
+  var lang = savedLang || ((navigator.language || '').toLowerCase().indexOf('zh') === 0 ? 'zh' : 'en');
+  function applyLang() {
+    root.setAttribute('data-lang', lang);
+    root.setAttribute('lang', lang === 'zh' ? 'zh-CN' : 'en');
+    var btn = document.getElementById('lang-btn');
+    if (btn) { btn.textContent = lang === 'zh' ? 'English' : '中文'; }
+  }
+  applyLang();
+
+  document.getElementById('lang-btn').addEventListener('click', function () {
+    lang = lang === 'zh' ? 'en' : 'zh';
+    store.set('clawperf-lang', lang);
+    applyLang();
+  });
+  document.getElementById('theme-btn').addEventListener('click', function () {
+    var cur = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    store.set('clawperf-theme', cur);
+    root.setAttribute('data-theme', cur);
+    root.setAttribute('data-theme-choice', cur);
+    applyTheme();
+  });
+})();
+</script>
+</body>
+</html>

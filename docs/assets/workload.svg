@@ -1,0 +1,54 @@
+<svg viewBox="0 0 780 340" width="780" xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-label="Agent workload: growing context with prefix-cache reuse across turns">
+  <style>
+    text { font-family: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', system-ui, sans-serif; }
+    .title { font-size: 16px; fill: #1e293b; font-weight: 600; }
+    .rowlabel { font-size: 12px; fill: #1e293b; }
+    .note { font-size: 12px; fill: #166534; }
+    .muted { font-size: 10px; fill: #64748b; }
+    .callout { font-size: 12px; fill: #1e293b; }
+    .callout-sm { font-size: 11px; fill: #1e293b; }
+    .seg-hit { fill: #d1fae5; stroke: #22c55e; stroke-width: 1; }
+    .seg-cold { fill: #dbeafe; stroke: #3b82f6; stroke-width: 1; }
+    .legend { font-size: 10px; fill: #1e293b; }
+  </style>
+
+  <text class="title" x="390" y="36" text-anchor="middle">Agent workload: growing context, reused prefix cache</text>
+
+  <!-- Turn 1: everything cold (bar 124..324) -->
+  <text class="rowlabel" x="109" y="81" text-anchor="end">Turn 1</text>
+  <rect class="seg-cold" x="124" y="64" width="90" height="26" rx="4"/>
+  <rect class="seg-cold" x="214" y="64" width="40" height="26" rx="4"/>
+  <rect class="seg-cold" x="254" y="64" width="70" height="26" rx="4"/>
+  <text class="muted" x="459" y="81">0% hit — cold start</text>
+
+  <!-- Turn 2: prefix reused, new turn appended (bar 124..384) -->
+  <text class="rowlabel" x="109" y="132" text-anchor="end">Turn 2</text>
+  <rect class="seg-hit" x="124" y="115" width="90" height="26" rx="4"/>
+  <rect class="seg-hit" x="214" y="115" width="40" height="26" rx="4"/>
+  <rect class="seg-hit" x="254" y="115" width="60" height="26" rx="4"/>
+  <rect class="seg-cold" x="314" y="115" width="70" height="26" rx="4"/>
+  <text class="note" x="459" y="132">73% hit — prefix reused</text>
+
+  <!-- Turn 3: prefix + history reused (bar 124..444) -->
+  <text class="rowlabel" x="109" y="183" text-anchor="end">Turn 3</text>
+  <rect class="seg-hit" x="124" y="166" width="90" height="26" rx="4"/>
+  <rect class="seg-hit" x="214" y="166" width="40" height="26" rx="4"/>
+  <rect class="seg-hit" x="254" y="166" width="60" height="26" rx="4"/>
+  <rect class="seg-hit" x="314" y="166" width="60" height="26" rx="4"/>
+  <rect class="seg-cold" x="374" y="166" width="70" height="26" rx="4"/>
+  <text class="note" x="459" y="183">78% hit — prefix reused</text>
+
+  <text class="muted" x="124" y="206">Each bar = one request: system prefix · user prefix · conversation history · new input</text>
+
+  <!-- Measured callout -->
+  <rect x="124" y="228" width="590" height="56" rx="8" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text class="callout" x="140" y="252">Measured on a real Ascend 910B3 / vLLM-Ascend run (2 users × 4 turns):</text>
+  <text class="callout-sm" x="140" y="270">71.3% HBM prefix-cache hit · 108 tok/s decode · TTFT P50 231 ms</text>
+
+  <!-- Legend -->
+  <rect class="seg-hit" x="124" y="302" width="12" height="12" rx="2"/>
+  <text class="legend" x="144" y="312">reused from prefix cache (hit)</text>
+  <rect class="seg-cold" x="394" y="302" width="12" height="12" rx="2"/>
+  <text class="legend" x="414" y="312">cold prefill (miss)</text>
+</svg>

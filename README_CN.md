@@ -2,13 +2,14 @@
 
 [![CI](https://github.com/ucm-system/ClawPerf/actions/workflows/ci.yml/badge.svg)](https://github.com/ucm-system/ClawPerf/actions/workflows/ci.yml)
 [![Release](https://github.com/ucm-system/ClawPerf/actions/workflows/release.yml/badge.svg)](https://github.com/ucm-system/ClawPerf/actions/workflows/release.yml)
+[![Site](https://img.shields.io/badge/site-ucm--system.github.io-blue)](https://ucm-system.github.io/ClawPerf/)
 [![PyPI Version](https://img.shields.io/pypi/v/clawperf.svg)](https://pypi.org/project/clawperf/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/clawperf.svg)](https://pypi.org/project/clawperf/)
 [![License](https://img.shields.io/pypi/l/clawperf.svg)](https://github.com/ucm-system/ClawPerf/blob/main/LICENSE)
 
 面向 LLM 推理服务（vLLM / SGLang / MindIE / vllm-ascend）的性能基准测试工具，聚焦**真实 Agent 工作负载**：多轮对话、长上下文、前缀缓存密集流量。
 
-[English](README.md)
+📖 **[项目主页](https://ucm-system.github.io/ClawPerf/)**（中英双语，含工作负载与流水线示意图） · [English](README.md)
 
 基于 [EvalScope](https://github.com/modelscope/evalscope) 的 perf 基础设施，ClawPerf 衡量推理栈在真实编码 Agent 冲击下的表现：上下文增长、轮次间共享前缀、工具调用、并发会话。
 
@@ -387,8 +388,22 @@ ruff check src/ tests/
 
 | 工作流 | 触发条件 | 作用 |
 |--------|----------|------|
-| [`ci.yml`](.github/workflows/ci.yml) | push 到 `main`、PR | `ruff check`；Linux（3.10–3.13）+ Windows/macOS 全量测试；打包烟测（构建 → `twine check` → 干净 venv 安装 wheel → 跑两个入口命令） |
+| [`ci.yml`](.github/workflows/ci.yml) | push 到 `main`、PR | `ruff check`；Linux（3.10–3.13）+ Windows/macOS 全量测试；打包烟测（构建 → `twine check` → 干净 venv 安装 wheel → 跑两个入口命令）；amd64 与 arm64 **原生**镜像构建 + 镜像内功能自检 |
 | [`release.yml`](.github/workflows/release.yml) | 打 `v*` tag（或手动触发） | 测试门禁 → sdist + wheel → 原生构建 `linux/amd64` 与 `linux/arm64` 镜像并推送 ghcr.io → 多架构 manifest → 创建 GitHub Release 并附上全部制品 |
+| [`pages.yml`](.github/workflows/pages.yml) | push 到 `main` 且改动 `docs/` | 校验站点（资源路径、标签闭合、SVG XML）并部署到 GitHub Pages |
+
+### 项目主页
+
+主页源码在 `docs/`，由 `pages.yml` 部署到 **https://ucm-system.github.io/ClawPerf/**。
+
+```bash
+python3 scripts/check_site.py docs     # 推送前校验（资源、标签闭合、SVG XML）
+python3 -m http.server -d docs 8000    # 本地预览 http://localhost:8000
+```
+
+它是单个自包含的 `index.html`（无构建步骤、无 CDN、无外部字体），示意图为 `docs/assets/` 下的内联 SVG，支持中英切换与明暗主题。新增示意图只需把 SVG 放进 `docs/assets/` 并引用 —— 校验脚本会保证每个引用都能解析。
+
+一次性配置：**Settings → Pages → Build and deployment → Source = GitHub Actions**。
 
 ### 发版流程
 

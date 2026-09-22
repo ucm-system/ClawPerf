@@ -1,0 +1,63 @@
+name: Pages
+
+# Publishes docs/ as the project site:
+#   https://ucm-system.github.io/ClawPerf/
+#
+# One-time setup: Settings → Pages → Build and deployment → Source =
+# "GitHub Actions". After that this workflow owns the site.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "scripts/check_site.py"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never cancel a deployment in progress; queue instead.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Validate and package the site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate the site
+        # Broken relative asset paths, unbalanced tags and malformed SVG all
+        # fail here instead of shipping a half-rendered page.
+        run: python3 scripts/check_site.py docs
+
+      - name: Validate the diagram geometry
+        # Overlapping boxes, clipped labels and detached arrows are caught by
+        # the same rules the diagrams were drawn against.
+        run: python3 scripts/check_diagrams.py docs/assets
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

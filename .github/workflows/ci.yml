@@ -34,7 +34,14 @@ jobs:
           python -m pip install "ruff>=0.15,<0.16" "actionlint-py==1.7.12.24"
 
       - name: Ruff
-        run: ruff check src/ tests/
+        run: ruff check src/ tests/ scripts/
+
+      - name: Site and diagram checks
+        # The Pages workflow runs these too; failing here keeps a broken site
+        # from being merged in the first place.
+        run: |
+          python3 scripts/check_site.py docs
+          python3 scripts/check_diagrams.py docs/assets
 
       - name: Lint the workflow files (actionlint)
         # Catches failure modes GitHub only reports as an instant "workflow
