@@ -392,10 +392,10 @@ jobs:
             "${IMAGE}:${VERSION}-amd64" "${IMAGE}:${VERSION}-arm64"
           docker buildx imagetools inspect "${IMAGE}:${VERSION}"
 
-      - name: Note about package visibility
-        # GitHub's REST API has NO endpoint for package visibility (the
-        # Packages API only lists/gets/deletes/restores), so this cannot be
-        # automated — surface the exact page instead of a failing call.
+      - name: Package visibility check
+        # GitHub's REST API cannot change package visibility (the Packages API
+        # only lists/gets/deletes/restores), so report the state and point at
+        # the page when a manual switch is still needed.
         env:
           IMAGE: ${{ needs.verify.outputs.image }}
         run: |
@@ -403,15 +403,24 @@ jobs:
           OWNER="${IMAGE#ghcr.io/}"; OWNER="${OWNER%%/*}"
           PACKAGE="${IMAGE##*/}"
           URL="https://github.com/orgs/${OWNER}/packages/container/${PACKAGE}/settings"
+          VIS="$(gh api "/orgs/${OWNER}/packages/container/${PACKAGE}" --jq .visibility 2>/dev/null || echo unknown)"
+          echo "package ${OWNER}/${PACKAGE} visibility: ${VIS}"
+          if [ "$VIS" = "public" ]; then
+            echo "anonymous docker pull works — nothing to do"
+            echo "### Container package \`${PACKAGE}\` is public" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "::notice::${OWNER}/${PACKAGE} is '${VIS}'; for anonymous pulls set it public at ${URL}"
           {
             echo "### Container package visibility"
             echo ""
-            echo "ghcr packages are private by default and the REST API cannot change"
-            echo "that, so anonymous \`docker pull\` needs a one-time manual switch:"
+            echo "The package is \`${VIS}\`, so \`docker pull\` needs credentials."
             echo ""
-            echo "<${URL}> → **Danger Zone** → **Change visibility** → **Public**"
+            echo "To make it public: <${URL}> → **Danger Zone** → **Change visibility**."
+            echo "If the option is greyed out (*\"Setting is disabled by organization"
+            echo "administrators\"*), enable public packages first in the organization's"
+            echo "**Settings → Packages → Package Creation**."
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "::notice::For anonymous pulls, make ${OWNER}/${PACKAGE} public at ${URL}"
 
   # ── 7. Finalise: checksums, then publish the draft ──────────────────────────
   release-final:
