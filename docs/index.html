@@ -148,6 +148,9 @@
     overflow-x: auto;
   }
   figure img { display: block; width: 100%; max-width: 800px; height: auto; margin: 0 auto; }
+  /* Terminal captures: keep tall output scrollable instead of stretching the page. */
+  figure .frame.shot { padding: 0; background: #0b1220; max-height: 620px; overflow-y: auto; }
+  figure .frame.shot img { max-width: 100%; width: auto; min-width: 320px; }
   figcaption { color: var(--text-muted); font-size: 13px; margin-top: 10px; text-align: center; }
 
   table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
@@ -205,6 +208,7 @@
       <a href="#why"><span class="en">Why</span><span class="zh">为什么</span></a>
       <a href="#modes"><span class="en">Modes</span><span class="zh">模式</span></a>
       <a href="#results"><span class="en">Results</span><span class="zh">实测结果</span></a>
+      <a href="#shots"><span class="en">Screenshots</span><span class="zh">运行截图</span></a>
       <a href="#start"><span class="en">Quick start</span><span class="zh">快速开始</span></a>
       <a href="#config"><span class="en">Config</span><span class="zh">配置</span></a>
       <a href="reference.html"><span class="en">Reference</span><span class="zh">完整参考</span></a>
@@ -375,6 +379,109 @@
         <span class="zh">同一个 Runner 负责施压、采集指标并给出结论。</span>
       </figcaption>
     </figure>
+  </div>
+</section>
+
+<section id="shots">
+  <div class="wrap">
+    <h2><span class="en">What it actually prints</span><span class="zh">真实运行输出</span></h2>
+    <p class="sub en">Terminal captures of real runs — no mock-ups. The first four are reports generated from committed <code class="inline">results_e2e/*.json</code> produced on a vLLM-Ascend 910B3 (Qwen3-0.6B, 32K window). The rest are live runs against the bundled mock server, so they reproduce on any laptop with no GPU.</p>
+    <p class="sub zh">以下都是真实运行的终端截图，没有任何手绘。前四张来自昇腾 910B3 上跑出的、已提交到仓库的 <code class="inline">results_e2e/*.json</code>（Qwen3-0.6B，32K 窗口）；其余是在内置 mock server 上的实跑，任何笔记本无 GPU 都能复现。</p>
+
+    <figure>
+      <div class="frame shot">
+        <img src="shots/slo.png" alt="clawperf report output for a real SLO sweep: capacity curve with ttft.p99, tpot.avg and e2e.max per concurrency level, verdict GOOD, max sustained users 5">
+      </div>
+      <figcaption>
+        <span class="en"><b>SLO sweep on real hardware.</b> Every constraint gets a column; the binding one is end-to-end max, which TTFT alone would have missed. <i>Max sustained users: 5.</i></span>
+        <span class="zh"><b>真机 SLO 扫描。</b>每条约束一列；真正的瓶颈是端到端最大值 —— 只看 TTFT 会误判。<i>最大可支撑用户数：5。</i></span>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="frame shot">
+        <img src="shots/scenario.png" alt="clawperf report output for a real multi-turn long-context scenario: TTFT scaling as context grows, decode throughput, per-turn tables">
+      </div>
+      <figcaption>
+        <span class="en"><b>Multi-turn long-context scenario.</b> TTFT and decode throughput as each session's context grows turn by turn — the growth a single-shot benchmark cannot see.</span>
+        <span class="zh"><b>多轮长上下文场景。</b>会话上下文逐轮增长时的 TTFT 与解码吞吐 —— 单次请求压测看不到的增长过程。</span>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="frame shot">
+        <img src="shots/hitrate.png" alt="clawperf report output for a real prefix-cache hit-rate test: TARGET vs MEASURED hit rate, theoretical ceiling versus actual speedup">
+      </div>
+      <figcaption>
+        <span class="en"><b>Prefix-cache hit rate.</b> TARGET vs MEASURED, read from the server's own Prometheus counters rather than inferred from the prompt shape.</span>
+        <span class="zh"><b>前缀缓存命中率。</b>目标 vs 实测，直接读服务端 Prometheus 计数器，而不是从提示词形状推断。</span>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="frame shot">
+        <img src="shots/trace.png" alt="clawperf report output for a KV-cache budget sweep over a real trace: hit rate versus cache budget, with the point of diminishing returns marked">
+      </div>
+      <figcaption>
+        <span class="en"><b>KV-cache budget sweep.</b> Hit rate against cache size over a real trace, so you can see where more cache stops buying anything.</span>
+        <span class="zh"><b>KV 缓存预算扫描。</b>真实 trace 下命中率随缓存容量的变化，一眼看出加到多少就不再划算。</span>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="frame shot">
+        <img src="shots/live-run.png" alt="A live clawperf scenario run against the mock server: resolved configuration banner, pre-flight probe, progress bar and the headline counters">
+      </div>
+      <figcaption>
+        <span class="en"><b>A live run (1/2).</b> Resolved configuration, the pre-flight probe, live progress, and the headline counters. Everything below the banner is the same code path as a real endpoint.</span>
+        <span class="zh"><b>实跑过程（上）。</b>解析后的配置、预检探针、实时进度与总体指标。banner 以下走的是与真实端点完全相同的代码路径。</span>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="frame shot">
+        <img src="shots/live-tables.png" alt="The result tables of that same run: per-engine prefix-cache breakdown, latency distribution (avg/min/P25..P99/max) and per-user summary">
+      </div>
+      <figcaption>
+        <span class="en"><b>The same run (2/2).</b> Per-engine prefix-cache breakdown, the full latency distribution, and the per-user summary.</span>
+        <span class="zh"><b>同一轮运行（下）。</b>逐引擎前缀缓存明细、完整时延分布与按用户汇总。</span>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="frame shot">
+        <img src="shots/live-hitrate.png" alt="A live clawperf hitrate run: prefill phase, measured phase, and the TARGET versus MEASURED hit rate table">
+      </div>
+      <figcaption>
+        <span class="en"><b>hitrate mode, end to end (1/2).</b> Prefill the known prefixes, measure, then compare TARGET with MEASURED.</span>
+        <span class="zh"><b>hitrate 模式全流程（上）。</b>先注入已知前缀，再测量，然后对比目标与实测命中率。</span>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="frame shot">
+        <img src="shots/live-hitrate-tables.png" alt="The result tables of that hitrate run: per-engine cache breakdown and the TTFT/TPOT distribution">
+      </div>
+      <figcaption>
+        <span class="en"><b>The same run (2/2).</b> Per-engine cache breakdown plus the TTFT/TPOT distribution of the measured requests.</span>
+        <span class="zh"><b>同一轮运行（下）。</b>逐引擎缓存明细，以及被测量请求的 TTFT/TPOT 分布。</span>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="frame shot">
+        <img src="shots/shell-safety.png" alt="Terminal showing bash rejecting an unquoted --slo ttft.p99<=10000 with 'No such file or directory', next to the shell-safe spelling and ClawPerf's diagnostic for a bare metric">
+      </div>
+      <figcaption>
+        <span class="en"><b>The shell-quoting trap, and the fix.</b> <code class="inline">--slo ttft.p99&lt;=10000</code> unquoted makes bash read a file called <code class="inline">=10000</code>; <code class="inline">--slo ttft.p99:10000</code> needs no quoting at all.</span>
+        <span class="zh"><b>shell 引号陷阱与解法。</b>不加引号的 <code class="inline">--slo ttft.p99&lt;=10000</code> 会让 bash 去读名为 <code class="inline">=10000</code> 的文件；<code class="inline">--slo ttft.p99:10000</code> 完全不需要引号。</span>
+      </figcaption>
+    </figure>
+
+    <p class="sub" style="margin-top:20px">
+      <span class="en">Every capture is generated by <code class="inline">scripts/gen_shots.py</code> from a command that really ran; the page's own figures are checked in CI.</span>
+      <span class="zh">每张截图都由 <code class="inline">scripts/gen_shots.py</code> 从真实执行过的命令生成，并在 CI 中校验。</span>
+    </p>
   </div>
 </section>
 

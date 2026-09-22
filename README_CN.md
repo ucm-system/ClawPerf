@@ -37,6 +37,26 @@
 
 **其他能力：** 无需 LLM 即可跑通命令行流程的 `clawperf-mock-server`（FastAPI 模拟 LLM，带 trie 前缀缓存模拟与 vLLM 风格 `/metrics`）；用户到达调度（burst/steady/Poisson）；推理 token（thinking）检测；连续失败提前中止；CI 友好退出码（0 成功 / 1 配置错误 / 2 全部失败 / 3 中断）；分层配置 **CLI 参数 > `CLAWPERF_*` 环境变量 > YAML（`--config`）> 默认值**。
 
+## 真实运行输出
+
+以下都是真实执行过的命令的终端截图。第一张由仓库里已提交的结果文件生成，来自 **昇腾 910B3** 上的实跑（Qwen3-0.6B，32K 窗口）；第二张是在内置 mock server 上的实跑，任意笔记本无 GPU 都能复现。
+
+**真机 SLO 容量扫描** —— `clawperf report results_e2e/slo.json --print`：
+
+![clawperf SLO 扫描报告：每个并发档位下的 ttft.p99 / tpot.avg / e2e.max 容量曲线，结论 GOOD，最大可支撑用户数 5](docs/shots/slo.png)
+
+**实跑多轮场景** —— 配置横幅、预检探针、进度与结果汇总表：
+
+![clawperf scenario 实跑：解析后的配置、进度条与结果表](docs/shots/live-run.png)
+
+**前缀缓存命中率** —— 目标 vs 实测，直接读服务端 Prometheus 计数器：
+
+![clawperf 命中率报告：目标 70% 与实测命中率，以及由此获得的加速比](docs/shots/hitrate.png)
+
+更多截图（KV 缓存预算扫描、结果明细表、shell 引号陷阱的报错提示）见
+[项目主页](https://ucm-system.github.io/ClawPerf/#shots)。它们都由 `python scripts/gen_shots.py`
+从真实运行重新生成。
+
 ## 安装
 
 ```bash

@@ -527,6 +527,7 @@ def build_html() -> str:
         ("metrics", "Metrics & PD disaggregation", "指标与 PD 分离"),
         ("slo-syntax", "SLO constraint syntax", "SLO 约束语法"),
         ("params", "All parameters", "全部参数"),
+        ("shots", "Real output", "真实输出"),
         ("env", "Env vars & config file", "环境变量与配置文件"),
         ("exit", "Output & exit codes", "产物与退出码"),
         ("trouble", "Troubleshooting", "故障排查"),
@@ -694,6 +695,13 @@ TEMPLATE = """<!DOCTYPE html>
   pre code {{ color: inherit; }}
   pre .c {{ color: #7dd3fc; }}
   pre .m {{ color: #86efac; }}
+  figure {{ margin: 20px 0 0; }}
+  figure .frame {{
+    background: #0b1220; border: 1px solid var(--border); border-radius: 14px; padding: 0;
+    overflow: auto; max-height: 620px;
+  }}
+  figure img {{ display: block; width: auto; max-width: 100%; height: auto; margin: 0 auto; }}
+  figcaption {{ color: var(--text-muted); font-size: 13px; margin: 10px 0 18px; text-align: center; }}
   footer {{ border-top: 1px solid var(--border); padding: 28px 0 48px; color: var(--text-muted); font-size: 14px; }}
   @media (max-width: 720px) {{ nav.links {{ display: none; }} }}
 </style>
@@ -859,6 +867,32 @@ clawperf --mode hitrate --endpoint http://localhost:8000/v1 --model qwen3 \\
     <h2>{params_h}</h2>
     <p class="sub">{params_sub}</p>
     {params}
+  </div>
+</section>
+
+<section id="shots">
+  <div class="wrap">
+    <h2>{shots_h}</h2>
+    <p class="sub">{shots_sub}</p>
+    <figure>
+      <div class="frame shot">
+        <img src="shots/slo.png" alt="clawperf report output for a real SLO sweep on an Ascend 910B3: capacity curve, verdict and max sustained users">
+      </div>
+      <figcaption>{shots_cap1}</figcaption>
+    </figure>
+    <figure>
+      <div class="frame shot">
+        <img src="shots/live-run.png" alt="A live clawperf scenario run: configuration banner, pre-flight probe, progress and headline counters">
+      </div>
+      <figcaption>{shots_cap2}</figcaption>
+    </figure>
+    <figure>
+      <div class="frame shot">
+        <img src="shots/shell-safety.png" alt="bash rejecting an unquoted --slo ttft.p99<=10000, and ClawPerf's diagnostic for a bare metric">
+      </div>
+      <figcaption>{shots_cap3}</figcaption>
+    </figure>
+    <p class="sub">{shots_more}</p>
   </div>
 </section>
 
@@ -1075,8 +1109,33 @@ def fill_template(body: str) -> str:
             "and its accepted values. Mode-specific groups are listed under the mode they belong to.",
             "由 <code class=\"inline\">clawperf --help</code> 自动生成 —— 每个参数、默认值与可选值。"
             "各模式专属参数列在对应模式之下。"),
-        "env_h": both("Environment variables &amp; config file", "环境变量与配置文件"),
-        "env_sub": both(
+        "shots_h": both("Real output", "真实输出"),
+        "shots_sub": both(
+            "Terminal captures of commands that actually ran — the first from a committed "
+            "vLLM-Ascend 910B3 result (<code class=\"inline\">results_e2e/slo.json</code>), the "
+            "other two reproducible on any laptop against the bundled mock server. Regenerate "
+            "them with <code class=\"inline\">python scripts/gen_shots.py</code>.",
+            "以下都是真实执行过的命令的终端截图 —— 第一张来自已提交的昇腾 910B3 结果"
+            "（<code class=\"inline\">results_e2e/slo.json</code>），后两张在任意笔记本上用内置 "
+            "mock server 即可复现。可用 <code class=\"inline\">python scripts/gen_shots.py</code> 重新生成。"),
+        "shots_cap1": both(
+            "A real SLO sweep: one column per constraint, the verdict, and the largest concurrency "
+            "that still met every target (5 users — the binding constraint was <code class=\"inline\">e2e.max</code>).",
+            "真机 SLO 扫描：每条约束一列，给出结论与仍满足全部目标的<br>最大并发（5 用户 —— 真正的瓶颈是 "
+            "<code class=\"inline\">e2e.max</code>）。"),
+        "shots_cap2": both(
+            "A live run: resolved configuration, the pre-flight probe, progress, and the headline counters.",
+            "实跑过程：解析后的配置、预检探针、实时进度与总体指标。"),
+        "shots_cap3": both(
+            "The shell-quoting trap: unquoted <code class=\"inline\">&lt;=</code> is a redirection to bash, "
+            "so <code class=\"inline\">--slo ttft.p99:10000</code> exists.",
+            "shell 引号陷阱：不加引号的 <code class=\"inline\">&lt;=</code> 对 bash 来说是重定向，"
+            "所以才有了 <code class=\"inline\">--slo ttft.p99:10000</code> 这种写法。"),
+        "shots_more": both(
+            "More captures — hit rate, trace budget sweep, multi-turn scenario — are on the "
+            "<a href=\"index.html#shots\">overview page</a>.",
+            "更多截图（命中率、trace 预算扫描、多轮场景）见<a href=\"index.html#shots\">项目总览页</a>。"),
+        "env_h": both("Environment variables &amp; config file", "环境变量与配置文件"),        "env_sub": both(
             "Precedence: <b>CLI &gt; environment &gt; YAML (<code class=\"inline\">--config</code>) "
             "&gt; defaults</b>. Every config field has a <code class=\"inline\">CLAWPERF_*</code> "
             "counterpart, upper-cased.",

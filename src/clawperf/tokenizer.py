@@ -64,6 +64,17 @@ class TokenizerManager:
         return bool(re.match(r"^[A-Za-z]:[\\/]", p))
 
     @staticmethod
+    def _quiet_transformers() -> None:
+        """Silence transformers' import-time advisories.
+
+        ClawPerf only ever uses the tokenizer, so "PyTorch was not found. Models
+        won't be available…" is pure noise — and it lands in the middle of the
+        run banner, which is confusing on a first run.
+        """
+        os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+        logging.getLogger("transformers").setLevel(logging.ERROR)
+
+    @staticmethod
     def _load_transformers(path: str, local_only: bool):
         from transformers import AutoTokenizer
         return AutoTokenizer.from_pretrained(
@@ -101,6 +112,7 @@ class TokenizerManager:
         if self._tokenizer is not None:
             return self._tokenizer
 
+        self._quiet_transformers()
         path = (self.tokenizer_path or "").strip()
         if not path:
             raise RuntimeError(

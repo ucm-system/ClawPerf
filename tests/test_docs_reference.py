@@ -136,3 +136,51 @@ def test_default_column_tells_the_truth():
     assert rendered["--slo"] == "—"                # repeatable, unset by default
     assert rendered["--metrics-endpoint"] == "—"
     assert rendered["--num-requests"] == "100"
+
+
+# ── Terminal screenshots ─────────────────────────────────────────────────────
+
+SHOTS_DIR = ROOT / "docs" / "shots"
+EXPECTED_SHOTS = [
+    "slo", "scenario", "hitrate", "trace",
+    "live-run", "live-tables", "live-hitrate", "live-hitrate-tables",
+    "shell-safety",
+]
+
+
+@pytest.mark.skipif(not SHOTS_DIR.is_dir(), reason="screenshots not generated")
+def test_every_shot_is_a_usable_png():
+    """A regenerated screenshot must not silently come out blank or huge."""
+    Image = pytest.importorskip("PIL.Image")
+    for name in EXPECTED_SHOTS:
+        path = SHOTS_DIR / f"{name}.png"
+        assert path.is_file(), f"{name}.png is missing — run scripts/gen_shots.py"
+        with Image.open(path) as img:
+            assert img.format == "PNG", name
+            assert 600 <= img.width <= 4000, f"{name}: width {img.width}"
+            assert 200 <= img.height <= 6000, f"{name}: height {img.height}"
+            colors = img.convert("RGB").getcolors(maxcolors=1 << 24) or []
+            total = img.width * img.height
+            ink = (total - max(c for c, _ in colors)) / total
+            assert 0.005 < ink < 0.75, f"{name}: {ink:.1%} non-background pixels"
+
+
+@pytest.mark.skipif(not SHOTS_DIR.is_dir(), reason="screenshots not generated")
+def test_no_orphan_screenshots():
+    """Every committed screenshot is referenced by a page or a README."""
+    referenced = ""
+    for rel in ("docs/index.html", "docs/reference.html", "README.md", "README_CN.md"):
+        referenced += (ROOT / rel).read_text(encoding="utf-8")
+    for png in sorted(SHOTS_DIR.glob("*.png")):
+        assert png.name in referenced, f"{png.name} is not referenced anywhere"
+
+
+def test_pages_show_the_screenshots():
+    index = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
+    for name in EXPECTED_SHOTS:
+        assert f"shots/{name}.png" in index, f"index.html does not show {name}.png"
+    reference = REFERENCE.read_text(encoding="utf-8")
+    assert "shots/slo.png" in reference
+    for readme in ("README.md", "README_CN.md"):
+        assert "docs/shots/slo.png" in (ROOT / readme).read_text(encoding="utf-8")
+

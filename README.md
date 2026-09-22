@@ -41,6 +41,28 @@ Built on [EvalScope](https://github.com/modelscope/evalscope)'s perf infrastruct
 - User arrival scheduling (burst / steady / Poisson), reasoning-token (thinking) detection, early abort on consecutive failures, CI-friendly exit codes (0 ok / 1 config / 2 all-failed / 3 interrupted).
 - Layered configuration: **CLI args > `CLAWPERF_*` env vars > YAML (`--config`) > defaults**.
 
+## Real output
+
+Terminal captures of commands that really ran. The first is generated from a committed result file
+produced on a **vLLM-Ascend 910B3** (Qwen3-0.6B, 32K window); the second is a live run against the
+bundled mock server, so you can reproduce it on any laptop without a GPU.
+
+**SLO capacity sweep on real hardware** — `clawperf report results_e2e/slo.json --print`:
+
+![clawperf SLO sweep report: capacity curve with ttft.p99 / tpot.avg / e2e.max per concurrency level, verdict GOOD, max sustained users 5](docs/shots/slo.png)
+
+**A live multi-turn scenario run** — banner, pre-flight probe, progress and the summary tables:
+
+![live clawperf scenario run: resolved configuration, progress bar and result tables](docs/shots/live-run.png)
+
+**Prefix-cache hit rate** — TARGET vs MEASURED, read from the server's own Prometheus counters:
+
+![clawperf hit-rate report: target 70% versus measured hit rate, with the speedup it bought](docs/shots/hitrate.png)
+
+More captures — KV-cache budget sweep, the result tables, and the shell-quoting diagnostic — are on
+the [project site](https://ucm-system.github.io/ClawPerf/#shots). They are regenerated from real
+runs by `python scripts/gen_shots.py`.
+
 ## Installation
 
 ```bash

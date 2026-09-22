@@ -62,6 +62,8 @@ docs/superpowers/
 
 # Large images (use compressed jpg in docs instead)
 docs/*.png
+# …except the terminal screenshots: mostly flat colour, ~100 KB each
+!docs/shots/*.png
 # Local model caches / tool markers
 models/
 *.mdl
