@@ -70,10 +70,13 @@ jobs:
           IMAGE="ghcr.io/$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
           PRERELEASE=false
           case "$VERSION" in *-*) PRERELEASE=true ;; esac
-          echo "tag=$TAG"            >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION"    >> "$GITHUB_OUTPUT"
-          echo "image=$IMAGE"        >> "$GITHUB_OUTPUT"
-          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+          # One grouped redirect: shellcheck's SC2129 (and it reads better).
+          {
+            echo "tag=$TAG"
+            echo "version=$VERSION"
+            echo "image=$IMAGE"
+            echo "prerelease=$PRERELEASE"
+          } >> "$GITHUB_OUTPUT"
           echo "=== release metadata ==="
           echo "tag        : $TAG"
           echo "version    : $VERSION"
