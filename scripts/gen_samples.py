@@ -157,7 +157,9 @@ def display_command(argv: list[str]) -> str:
 
 
 def report_sample(result: str) -> tuple[str, str]:
-    argv = [str(CLAWPERF), "report", str(RESULTS / result), "--print"]
+    # A *relative* path keeps the recorded command (and therefore the sample)
+    # identical on Windows and Linux CI.
+    argv = [str(CLAWPERF), "report", f"results_e2e/{result}", "--print"]
     return display_command(argv), clean(capture(argv))
 
 

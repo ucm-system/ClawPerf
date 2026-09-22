@@ -324,10 +324,10 @@ ClawPerf - LLM Serving Performance Benchmark
 <span class='log'>INFO:clawperf:Metrics start snapshot: query=1 hit=0 ext_query=1 ext_hit=0 engines=['0'] ext_engines=['0']</span>
 <span class='warn'>WARNING:clawperf:Prefix cache reset endpoint http://127.0.0.1:18095/reset_prefix_cache not found (404) — this backend</span>
   doesn't expose cache reset. Continuing without a clean baseline; measured hit rate may include residual prefixes.
-<span class='log'>INFO:clawperf:Setup complete in 3.62s — starting benchmark</span>
+<span class='log'>INFO:clawperf:Setup complete in 3.67s — starting benchmark</span>
 <span class='log'>INFO:clawperf:Starting benchmark: 4 users, arrival=burst</span>
-Benchmark: 100%|██████████| 16/16 [00:00&lt;00:00, 35.08turn/s]
-<span class='log'>INFO:clawperf:Metrics end snapshot: query=181,377 hit=139,989 ext_query=8,552 ext_hit=0 engines=['0']</span>
+Benchmark: 100%|██████████| 16/16 [00:00&lt;00:00, 36.50turn/s]
+<span class='log'>INFO:clawperf:Metrics end snapshot: query=184,829 hit=141,438 ext_query=8,643 ext_hit=0 engines=['0']</span>
   ext_engines=['0']
 <span class='log'>INFO:clawperf:History appended to: clawperf_history.jsonl</span>
 <span class='log'>INFO:clawperf:Markdown report saved to: C:\Users\keriko\AppData\Local\Temp\sample_scenario.md</span>
@@ -338,25 +338,25 @@ ClawPerf - Benchmark Complete
 <span class='rule'>+--------------------------------------+-----------------+</span>
 <span class='rule'>| Metric                               |           Value |</span>
 <span class='rule'>+--------------------------------------+-----------------+</span>
-<span class='rule'>| Setup Time                           |          3.62 s |</span>
-<span class='rule'>| Duration                             |          0.45 s |</span>
+<span class='rule'>| Setup Time                           |          3.67 s |</span>
+<span class='rule'>| Duration                             |          0.44 s |</span>
 <span class='rule'>| Total Requests                       |              16 |</span>
 <span class='rule'>| Success Requests                     |              16 |</span>
 <span class='rule'>| Failed Requests                      |               0 |</span>
-<span class='rule'>| Total Input Tokens                   |         181,376 |</span>
-<span class='rule'>| Prefill Token Throughput             | 400388.52 tok/s |</span>
+<span class='rule'>| Total Input Tokens                   |         184,828 |</span>
+<span class='rule'>| Prefill Token Throughput             | 421981.74 tok/s |</span>
 <span class='rule'>| Total Output Tokens                  |             768 |</span>
-<span class='rule'>| Request Throughput                   |   35.3201 req/s |</span>
-<span class='rule'>| Output Token Throughput              |   1695.36 tok/s |</span>
-<span class='rule'>| Decode Throughput (excl prefill)     |   4258.54 tok/s |</span>
-<span class='rule'>| Total Token Throughput               | 402083.89 tok/s |</span>
+<span class='rule'>| Request Throughput                   |   36.5297 req/s |</span>
+<span class='rule'>| Output Token Throughput              |   1753.42 tok/s |</span>
+<span class='rule'>| Decode Throughput (excl prefill)     |   3301.14 tok/s |</span>
+<span class='rule'>| Total Token Throughput               | 423735.16 tok/s |</span>
 <span class='rule'>| Total Compactions                    |               0 |</span>
-<span class='rule'>| HBM Prefix Cache Token Hit Rate      |          77.18% |</span>
-<span class='rule'>| HBM Prefix Cache Hit Tokens          |         139,989 |</span>
-<span class='rule'>| HBM Prefix Cache Query Tokens        |         181,376 |</span>
+<span class='rule'>| HBM Prefix Cache Token Hit Rate      |          76.52% |</span>
+<span class='rule'>| HBM Prefix Cache Hit Tokens          |         141,438 |</span>
+<span class='rule'>| HBM Prefix Cache Query Tokens        |         184,828 |</span>
 <span class='rule'>| External Prefix Cache Token Hit Rate |           0.00% |</span>
 <span class='rule'>| External Prefix Cache Hit Tokens     |               0 |</span>
-<span class='rule'>| External Prefix Cache Query Tokens   |           8,551 |</span>
+<span class='rule'>| External Prefix Cache Query Tokens   |           8,642 |</span>
 <span class='rule'>+--------------------------------------+-----------------+</span></code></pre>
 </div>
   <div class='grid c2'>
