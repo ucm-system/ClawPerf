@@ -2,13 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import os
-import tempfile
-
-import pytest
-
-
 # ── Trace loading ─────────────────────────────────────────────────────────────
 
 class TestTraceLoading:
@@ -52,6 +45,7 @@ class TestTraceLoading:
 
     def test_load_gzipped(self, tmp_path):
         import gzip
+
         from clawperf.trace_simulator import load_trace
         path = tmp_path / "trace.jsonl.gz"
         with gzip.open(path, "wt", encoding="utf-8") as f:
@@ -123,7 +117,7 @@ class TestTraceLoading:
 class TestPrefixCacheSim:
     def test_all_miss_first_request(self):
         """First request has no cache hits."""
-        from clawperf.trace_simulator import simulate_trace, TraceEntry
+        from clawperf.trace_simulator import TraceEntry, simulate_trace
         entries = [TraceEntry(index=0, hash_ids=[0, 1, 2], input_length=192, block_size=64)]
         result = simulate_trace(entries, budget_tokens=0)  # unlimited
         assert result.hit_rate == 0.0  # first request = all misses
@@ -132,7 +126,7 @@ class TestPrefixCacheSim:
 
     def test_full_hit_on_repeated_prefix(self):
         """Second request with same prefix gets full hits."""
-        from clawperf.trace_simulator import simulate_trace, TraceEntry
+        from clawperf.trace_simulator import TraceEntry, simulate_trace
         entries = [
             TraceEntry(index=0, hash_ids=[0, 1, 2], input_length=192, block_size=64),
             TraceEntry(index=1, hash_ids=[0, 1, 2], input_length=192, block_size=64),
@@ -144,7 +138,7 @@ class TestPrefixCacheSim:
 
     def test_partial_hit(self):
         """Second request shares some but not all prefix blocks."""
-        from clawperf.trace_simulator import simulate_trace, TraceEntry
+        from clawperf.trace_simulator import TraceEntry, simulate_trace
         entries = [
             TraceEntry(index=0, hash_ids=[0, 1, 2], input_length=192, block_size=64),
             TraceEntry(index=1, hash_ids=[0, 1, 3], input_length=192, block_size=64),
@@ -157,7 +151,7 @@ class TestPrefixCacheSim:
 
     def test_budget_eviction_lru(self):
         """Small budget forces eviction; LRU evicts least recently used."""
-        from clawperf.trace_simulator import simulate_trace, TraceEntry
+        from clawperf.trace_simulator import TraceEntry, simulate_trace
         # Budget fits 2 blocks. Second request takes the cache to 3 blocks →
         # evict the least recently used block (0). A 3rd request reusing
         # block 0 then misses (it was evicted).
@@ -173,7 +167,7 @@ class TestPrefixCacheSim:
 
     def test_budget_eviction_fifo(self):
         """FIFO evicts oldest-inserted block regardless of recency."""
-        from clawperf.trace_simulator import simulate_trace, TraceEntry
+        from clawperf.trace_simulator import TraceEntry, simulate_trace
         entries = [
             TraceEntry(index=0, hash_ids=[0, 1, 2], input_length=192, block_size=64),
             TraceEntry(index=1, hash_ids=[0, 1, 3], input_length=192, block_size=64),
@@ -189,7 +183,7 @@ class TestPrefixCacheSim:
 
     def test_budget_unlimited_matches_ceiling(self):
         """Unlimited budget should match the ceiling."""
-        from clawperf.trace_simulator import simulate_trace, compute_ceiling, TraceEntry
+        from clawperf.trace_simulator import TraceEntry, compute_ceiling, simulate_trace
         entries = [
             TraceEntry(index=0, hash_ids=[0, 1, 2], input_length=192, block_size=64),
             TraceEntry(index=1, hash_ids=[0, 1, 3], input_length=192, block_size=64),
@@ -201,7 +195,7 @@ class TestPrefixCacheSim:
 
     def test_speedup_formula(self):
         """Speedup = 1 / (1 - hit_rate)."""
-        from clawperf.trace_simulator import simulate_trace, TraceEntry
+        from clawperf.trace_simulator import TraceEntry, simulate_trace
         entries = [
             TraceEntry(index=0, hash_ids=[0, 1, 2, 3], input_length=256, block_size=64),
             TraceEntry(index=1, hash_ids=[0, 1, 2, 3], input_length=256, block_size=64),
@@ -218,7 +212,7 @@ class TestPrefixCacheSim:
 class TestCeiling:
     def test_ceiling_no_sharing(self):
         """No shared blocks → ceiling = 0."""
-        from clawperf.trace_simulator import compute_ceiling, TraceEntry
+        from clawperf.trace_simulator import TraceEntry, compute_ceiling
         entries = [
             TraceEntry(index=0, hash_ids=[0, 1], input_length=128, block_size=64),
             TraceEntry(index=1, hash_ids=[2, 3], input_length=128, block_size=64),
@@ -227,7 +221,7 @@ class TestCeiling:
 
     def test_ceiling_full_sharing(self):
         """All requests share the same prefix → high ceiling."""
-        from clawperf.trace_simulator import compute_ceiling, TraceEntry
+        from clawperf.trace_simulator import TraceEntry, compute_ceiling
         entries = [
             TraceEntry(index=0, hash_ids=[0, 1, 2], input_length=192, block_size=64),
             TraceEntry(index=1, hash_ids=[0, 1, 2], input_length=192, block_size=64),
@@ -242,7 +236,7 @@ class TestCeiling:
 class TestBudgetSweep:
     def test_sweep_increasing_hit_rate(self):
         """Hit rate should generally increase with budget."""
-        from clawperf.trace_simulator import budget_sweep, TraceEntry
+        from clawperf.trace_simulator import TraceEntry, budget_sweep
         # Create a trace with many shared prefixes and some unique blocks.
         entries = []
         for i in range(20):
@@ -261,7 +255,7 @@ class TestBudgetSweep:
 
     def test_sweep_has_inflection(self):
         """Budget sweep should find an inflection point."""
-        from clawperf.trace_simulator import budget_sweep, TraceEntry
+        from clawperf.trace_simulator import TraceEntry, budget_sweep
         entries = [
             TraceEntry(index=i, hash_ids=[0, 1, 100 + i], input_length=192, block_size=64)
             for i in range(10)
@@ -286,7 +280,10 @@ class TestBudgetSweep:
 class TestSummary:
     def test_summarize_simulation(self):
         from clawperf.trace_simulator import (
-            simulate_trace, summarize_simulation, TraceEntry, TraceStats,
+            TraceEntry,
+            TraceStats,
+            simulate_trace,
+            summarize_simulation,
         )
         entries = [
             TraceEntry(index=0, hash_ids=[0, 1, 2], input_length=192, block_size=64),
@@ -306,8 +303,11 @@ class TestSummary:
 
     def test_summarize_with_sweep(self):
         from clawperf.trace_simulator import (
-            budget_sweep, simulate_trace, summarize_simulation,
-            TraceEntry, TraceStats,
+            TraceEntry,
+            TraceStats,
+            budget_sweep,
+            simulate_trace,
+            summarize_simulation,
         )
         entries = [
             TraceEntry(index=i, hash_ids=[0, 1, 100 + i], input_length=192, block_size=64)

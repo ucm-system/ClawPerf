@@ -42,7 +42,7 @@ class TestClaudeConverter:
         _write_jsonl(path, self._make_session())
         lines = convert_file(str(path), session_id=0)
         assert len(lines) == 3  # one request per assistant turn
-        assert all(l["user_id"] == 0 for l in lines)
+        assert all(line["user_id"] == 0 for line in lines)
         # Growing cumulative prefix: later turns have more hash_ids.
         assert len(lines[0]["hash_ids"]) < len(lines[-1]["hash_ids"])
         # Messages carry the tool-use assistant turn.
@@ -54,7 +54,7 @@ class TestClaudeConverter:
         path = tmp_path / "session.jsonl"
         _write_jsonl(path, self._make_session())
         lines = convert_file(str(path))
-        lens = [l["input_length"] for l in lines]
+        lens = [line["input_length"] for line in lines]
         assert lens == sorted(lens)  # later turns have longer context
 
     def test_multi_session(self, tmp_path):
@@ -65,7 +65,7 @@ class TestClaudeConverter:
         _write_jsonl(p2, self._make_session(1))
         lines = convert_many([str(p1), str(p2)])
         assert len(lines) == 3
-        assert {l["user_id"] for l in lines} == {0, 1}
+        assert {line["user_id"] for line in lines} == {0, 1}
 
     def test_max_requests_cap(self, tmp_path):
         from clawperf.trace_converter import convert_file

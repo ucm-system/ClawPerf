@@ -4,11 +4,8 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
-from typing import Dict
 
 import pytest
-
 
 # ── Context profiles ─────────────────────────────────────────────────────────
 
@@ -54,11 +51,11 @@ class TestContextProfiles:
             assert total < 50000
 
     def test_list_profiles_ordered(self):
-        from clawperf.context_profiles import list_profiles, PROFILE_ORDER
+        from clawperf.context_profiles import PROFILE_ORDER, list_profiles
         assert list_profiles() == PROFILE_ORDER
 
     def test_list_suites(self):
-        from clawperf.context_profiles import list_suites, SUITES
+        from clawperf.context_profiles import SUITES, list_suites
         assert set(list_suites()) == set(SUITES.keys())
 
 
@@ -225,8 +222,13 @@ class TestTranslators:
         from clawperf.translators import anthropic_messages_to_openai
         messages = [
             {"role": "user", "content": "hello"},
-            {"role": "assistant", "content": [{"type": "text", "text": "hi"}, {"type": "tool_use", "id": "c1", "name": "ls", "input": {}}]},
-            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "c1", "content": "file1.py\nfile2.py"}]},
+            {"role": "assistant", "content": [
+                {"type": "text", "text": "hi"},
+                {"type": "tool_use", "id": "c1", "name": "ls", "input": {}},
+            ]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "c1", "content": "file1.py\nfile2.py"},
+            ]},
         ]
         oai = anthropic_messages_to_openai(messages)
         assert len(oai) == 3
@@ -248,7 +250,10 @@ def _make_scenario_result(num_users=2, ttft_p50=300.0, thru=45.0):
         "summary": {"mode": "scenario", "total_compactions": 0},
         "users": [
             {"user_id": i, "aggregate": {
-                "ttft": {"P50": ttft_p50 + i * 100, "avg": ttft_p50 + 50, "min": ttft_p50, "max": ttft_p50 + 200, "N": 10},
+                "ttft": {
+                    "P50": ttft_p50 + i * 100, "avg": ttft_p50 + 50,
+                    "min": ttft_p50, "max": ttft_p50 + 200, "N": 10,
+                },
                 "tpot": {"P50": 15.0},
                 "e2e_latency": {"P50": 1500.0},
                 "throughput_tok_s": thru - i * 5,
@@ -397,8 +402,8 @@ class TestConfigValidation:
 
 class TestEarlyAbort:
     def test_consecutive_failures_reset_on_success(self):
-        from clawperf.runner import BenchmarkRunner
         from clawperf.config import BenchmarkConfig
+        from clawperf.runner import BenchmarkRunner
         c = BenchmarkConfig(mode="scenario", endpoint="http://x", model="m",
                             max_consecutive_failures=3)
         runner = BenchmarkRunner(c)
@@ -413,8 +418,8 @@ class TestEarlyAbort:
         assert runner._consecutive_failures == 0
 
     def test_abort_triggers_at_threshold(self):
-        from clawperf.runner import BenchmarkRunner
         from clawperf.config import BenchmarkConfig
+        from clawperf.runner import BenchmarkRunner
         c = BenchmarkConfig(mode="scenario", endpoint="http://x", model="m",
                             max_consecutive_failures=3)
         runner = BenchmarkRunner(c)
@@ -426,8 +431,8 @@ class TestEarlyAbort:
         assert runner._abort_event.is_set()
 
     def test_abort_disabled_by_default(self):
-        from clawperf.runner import BenchmarkRunner
         from clawperf.config import BenchmarkConfig
+        from clawperf.runner import BenchmarkRunner
         c = BenchmarkConfig(mode="scenario", endpoint="http://x", model="m")
         runner = BenchmarkRunner(c)
         for _ in range(100):
@@ -439,24 +444,24 @@ class TestEarlyAbort:
 
 class TestHasAllFailures:
     def test_all_failures_true(self):
-        from clawperf.runner import BenchmarkRunner
         from clawperf.config import BenchmarkConfig
+        from clawperf.runner import BenchmarkRunner
         c = BenchmarkConfig(mode="scenario", endpoint="http://x", model="m")
         runner = BenchmarkRunner(c)
         runner._turn_records = [{"success": False}, {"success": False}]
         assert runner._has_all_failures()
 
     def test_mixed_failures_false(self):
-        from clawperf.runner import BenchmarkRunner
         from clawperf.config import BenchmarkConfig
+        from clawperf.runner import BenchmarkRunner
         c = BenchmarkConfig(mode="scenario", endpoint="http://x", model="m")
         runner = BenchmarkRunner(c)
         runner._turn_records = [{"success": True}, {"success": False}]
         assert not runner._has_all_failures()
 
     def test_empty_records_true(self):
-        from clawperf.runner import BenchmarkRunner
         from clawperf.config import BenchmarkConfig
+        from clawperf.runner import BenchmarkRunner
         c = BenchmarkConfig(mode="scenario", endpoint="http://x", model="m")
         runner = BenchmarkRunner(c)
         assert runner._has_all_failures()
@@ -487,8 +492,8 @@ class TestReasoningTokens:
         assert r.thinking_tokens == 0
 
     def test_agent_result_to_dict_includes_reasoning(self):
-        from clawperf.runner import BenchmarkRunner
         from clawperf.agent import AgentRunResult, AgentTurnRecord
+        from clawperf.runner import BenchmarkRunner
         r = AgentRunResult(
             task_id=0, steps=1, finished=True, total_wall_s=2.0,
             total_input_tokens=100, total_output_tokens=50,

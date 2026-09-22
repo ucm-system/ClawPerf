@@ -609,7 +609,11 @@ def _md_concurrency_efficiency(result: Dict) -> str:
     if len(users) < 2:
         return ""
 
-    lines = ["## Concurrency Scaling", "", "| Users | Total tok/s | Per-user tok/s | Efficiency |", "|-------|------------|----------------|------------|"]
+    lines = [
+        "## Concurrency Scaling", "",
+        "| Users | Total tok/s | Per-user tok/s | Efficiency |",
+        "|-------|------------|----------------|------------|",
+    ]
     thru_vals = [u.get("aggregate", {}).get("throughput_tok_s", 0) or 0 for u in users]
     base = thru_vals[0] if thru_vals else 0
     for i, u in enumerate(users):

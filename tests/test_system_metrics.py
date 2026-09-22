@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import pytest
+
 from clawperf.system_metrics import (
     BACKEND_MAP,
     SystemMetricsPoller,
     extract_prefix_cache_per_engine,
     match_metrics,
+    merge_endpoint_samples,
+    normalize_metrics_endpoints,
+    parse_metrics_target,
     parse_prometheus_metrics,
+    reset_targets,
 )
 
 
@@ -320,15 +326,6 @@ def test_per_engine_counter_reset():
 
 # --- Multi-endpoint support (PD-disaggregated / multi-instance) ----------------
 
-import pytest  # noqa: E402
-
-from clawperf.system_metrics import (
-    merge_endpoint_samples,
-    normalize_metrics_endpoints,
-    parse_metrics_target,
-    reset_targets,
-)
-
 
 def test_parse_metrics_target_default_label():
     assert parse_metrics_target("http://10.0.0.1:9101/metrics") == ("10.0.0.1:9101", "http://10.0.0.1:9101/metrics")
@@ -379,7 +376,7 @@ def test_poller_accepts_single_and_multiple():
     assert p1.targets == [("h:1", "http://h:1/metrics")]
     assert p1.endpoint == "http://h:1/metrics"
     p2 = SystemMetricsPoller(["p=http://h:1/metrics", "http://h:2/metrics"], 5, "vllm")
-    assert [l for l, _ in p2.targets] == ["p", "h:2"]
+    assert [label for label, _ in p2.targets] == ["p", "h:2"]
     p3 = SystemMetricsPoller(None, 5, "vllm")
     assert p3.targets == [] and p3.endpoint == ""
 

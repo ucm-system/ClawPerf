@@ -6,10 +6,6 @@ operator precedence and TTFT rows leaked across modes.
 
 from __future__ import annotations
 
-import json
-
-import pytest
-
 
 def _scenario_result(num_users=2, ttft_p50=300.0, thru=45.0):
     return {
@@ -71,8 +67,8 @@ class TestReportRows:
         # Only the Summary table's user rows (exclude the concurrency-scaling
         # table which also has "| 1 |" rows).
         summary_section = md.split("## Summary")[1].split("## TTFT Scaling")[0]
-        data_rows = [l for l in summary_section.splitlines()
-                     if l.startswith("| 0 ") or l.startswith("| 1 ")]
+        data_rows = [line for line in summary_section.splitlines()
+                     if line.startswith("| 0 ") or line.startswith("| 1 ")]
         assert data_rows, "user rows missing"
         for row in data_rows:
             cells = [c.strip() for c in row.strip("|").split("|")]
@@ -93,14 +89,15 @@ class TestReportRows:
         from clawperf.report import generate_report
         md = generate_report(_scenario_result())
         verdict_section = md.split("## Key Findings")[0]
-        ttft_rows = [l for l in verdict_section.splitlines() if "TTFT" in l]
+        ttft_rows = [line for line in verdict_section.splitlines() if "TTFT" in line]
         assert len(ttft_rows) == 1, f"expected 1 TTFT row, got {ttft_rows}"
 
     def test_slo_rows_complete(self):
         """SLO capacity rows keep Error/SLO columns."""
         from clawperf.report import generate_report
         md = generate_report(_slo_result())
-        rows = [l for l in md.splitlines() if l.startswith("| 1 ") or l.startswith("| 2 ") or l.startswith("| 4 ")]
+        rows = [line for line in md.splitlines()
+                if line.startswith("| 1 ") or line.startswith("| 2 ") or line.startswith("| 4 ")]
         assert rows, "capacity rows missing"
         for row in rows:
             cells = [c.strip() for c in row.strip("|").split("|")]
@@ -146,7 +143,7 @@ class TestReportRows:
         }
         md = generate_report(result)
         findings = md.split("## Key Findings")[1].split("## Summary")[0]
-        ttft_lines = [l for l in findings.splitlines() if "TTFT" in l]
+        ttft_lines = [line for line in findings.splitlines() if "TTFT" in line]
         assert len(ttft_lines) == 1, f"duplicate TTFT findings: {ttft_lines}"
 
     def test_ascii_chart_1based_label(self):

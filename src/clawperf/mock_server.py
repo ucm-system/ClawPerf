@@ -439,7 +439,10 @@ async def metrics():
         "",
         "# HELP external_prefix_cache_queries_total Total prompt tokens queried against the external prefix cache.",
         "# TYPE external_prefix_cache_queries_total counter",
-        f"external_prefix_cache_queries_total{{model_name=\"mock\",engine=\"0\"}} {c['external_prefix_cache_query_tokens']}",
+        (
+            f'external_prefix_cache_queries_total{{model_name="mock",engine="0"}} '
+            f"{c['external_prefix_cache_query_tokens']}"
+        ),
         "",
         "# HELP external_prefix_cache_hits_total Total prompt tokens reused via the external prefix cache.",
         "# TYPE external_prefix_cache_hits_total counter",

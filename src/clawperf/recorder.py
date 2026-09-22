@@ -278,7 +278,19 @@ def create_app(proxy: RecordingProxy):
 
         async def gen():
             nonlocal started
-            yield f"event: message_start\ndata: {json.dumps({'type': 'message_start', 'message': {'id': msg_id, 'type': 'message', 'role': 'assistant', 'model': model, 'content': [], 'stop_reason': None, 'usage': {'input_tokens': 0, 'output_tokens': 0}}})}\n\n"
+            start_event = {
+                "type": "message_start",
+                "message": {
+                    "id": msg_id,
+                    "type": "message",
+                    "role": "assistant",
+                    "model": model,
+                    "content": [],
+                    "stop_reason": None,
+                    "usage": {"input_tokens": 0, "output_tokens": 0},
+                },
+            }
+            yield f"event: message_start\ndata: {json.dumps(start_event)}\n\n"
             for chunk in chunks:
                 events, started = openai_chunk_to_anthropic_events(
                     chunk, msg_id, model, accumulator, started
