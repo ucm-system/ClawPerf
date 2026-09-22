@@ -1,0 +1,75 @@
+name: GHCR package visibility
+
+# Maintenance helper: report who owns the container package and try to make it
+# publicly pullable, printing the API's own error text when it cannot.
+#
+#   Actions → GHCR package visibility → Run workflow
+#
+# Background: a ghcr package pushed with a *personal* token belongs to the
+# organization and its visibility cannot be changed — it must be deleted and
+# re-pushed with the workflow's GITHUB_TOKEN. A package pushed with
+# GITHUB_TOKEN belongs to the repository, and the switch lives on the
+# repository-scoped package page.
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Container package name"
+        required: false
+        default: "clawperf"
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  diagnose:
+    name: Inspect and try to publicise
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Who owns the package?
+        env:
+          PACKAGE: ${{ inputs.package || 'clawperf' }}
+        run: |
+          set -uo pipefail
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          echo "repository : $GITHUB_REPOSITORY"
+          echo "owner      : $OWNER"
+          echo "package    : $PACKAGE"
+          echo
+          echo "===== GET /repos/$GITHUB_REPOSITORY/packages/container/$PACKAGE ====="
+          gh api "/repos/$GITHUB_REPOSITORY/packages/container/$PACKAGE" 2>&1 | head -60 || true
+          echo
+          echo "===== GET /orgs/$OWNER/packages/container/$PACKAGE ====="
+          gh api "/orgs/$OWNER/packages/container/$PACKAGE" 2>&1 | head -60 || true
+
+      - name: Try to set it public (org endpoint)
+        env:
+          PACKAGE: ${{ inputs.package || 'clawperf' }}
+        run: |
+          set -uo pipefail
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          echo "===== PATCH /orgs/$OWNER/packages/container/$PACKAGE ====="
+          gh api --method PATCH "/orgs/$OWNER/packages/container/$PACKAGE" \
+            -f visibility=public 2>&1 | head -30 || true
+          echo
+          echo "===== visibility afterwards ====="
+          gh api "/orgs/$OWNER/packages/container/$PACKAGE" --jq '.visibility' 2>&1 || true
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "### GHCR package diagnosis"
+            echo ""
+            echo "- repo: \`$GITHUB_REPOSITORY\`"
+            echo "- package: \`${{ inputs.package || 'clawperf' }}\`"
+            echo ""
+            echo "If the repo-scoped GET returned a \`repository\` field, the package is"
+            echo "repository-owned and the visibility switch is on the repository package"
+            echo "page. If it 404s while the org-scoped GET succeeds, the package is"
+            echo "organization-owned and must be deleted and re-pushed with GITHUB_TOKEN."
+          } >> "$GITHUB_STEP_SUMMARY"
