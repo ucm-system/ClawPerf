@@ -173,9 +173,115 @@ def match_metrics(raw: Dict[str, float], metrics_map: Dict) -> Dict[str, float]:
     return sample
 
 
+# ── Multi-endpoint support (PD-disaggregated / multi-instance serving) ────────
+#
+# Prefill/decode-disaggregated services expose one /metrics port per instance
+# (and DP replicas likewise). --metrics-endpoint accepts any number of them;
+# every instance is polled concurrently and the samples are merged into one
+# fleet-wide view:
+#   - counters & additive gauges (prefix-cache tokens, running/waiting): SUM
+#   - ratio gauges (kv_cache_usage, cache_hit_rate): MEAN over reporters
+#   - per-engine breakdowns: engine ids namespaced '<label>:<engine>' so the
+#     same 'engine="0"' from two instances stays distinguishable
+
+_LABEL_RE = re.compile(r"^([A-Za-z0-9_.-]+)=(.+)$")
+_HOSTPORT_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*://([^/?#]+)")
+
+
+def parse_metrics_target(spec: str) -> tuple[str, str]:
+    """Parse one metrics-endpoint value into ``(label, url)``.
+
+    Supports an explicit ``label=url`` form (e.g.
+    ``prefill=http://h:9101/metrics``); without a label the host:port of the
+    URL is used (e.g. ``10.0.0.1:9101``) so per-engine rows stay identifiable
+    when several instances report the same engine id.
+    """
+    spec = (spec or "").strip()
+    m = _LABEL_RE.match(spec)
+    if m and "://" not in m.group(1):
+        label, url = m.group(1), m.group(2).strip()
+    else:
+        label, url = None, spec
+    if not label:
+        hm = _HOSTPORT_RE.match(url)
+        label = hm.group(1) if hm else url or "endpoint"
+    return label, url
+
+
+def normalize_metrics_endpoints(endpoints) -> List[tuple[str, str]]:
+    """Accept a single URL, a comma-separated string, or a list/tuple of them
+    (each element may itself be comma-separated or carry a ``label=`` prefix).
+    Returns de-duplicated ``[(label, url), ...]`` in input order."""
+    if endpoints is None or endpoints == "":
+        return []
+    if isinstance(endpoints, str):
+        specs = endpoints.split(",")
+    else:
+        specs = []
+        for e in endpoints:
+            if e is None:
+                continue
+            specs.extend(str(e).split(","))
+    out: List[tuple[str, str]] = []
+    seen: set = set()
+    for s in specs:
+        s = s.strip()
+        if not s:
+            continue
+        label, url = parse_metrics_target(s)
+        if url not in seen:
+            seen.add(url)
+            out.append((label, url))
+    return out
+
+
+# Ratio gauges are averaged across endpoints (fleet-wide average KV usage);
+# every other mapped metric is a counter/additive gauge and gets summed.
+_RATIO_KEYS = {"kv_cache_usage", "cache_hit_rate"}
+
+
+def merge_endpoint_samples(labeled: List[tuple[str, Dict]]) -> Dict:
+    """Merge per-endpoint samples into one fleet-wide sample.
+
+    ``labeled`` is ``[(label, per_endpoint_sample), ...]`` where each sample
+    comes from :meth:`SystemMetricsPoller._fetch_one`. A single entry passes
+    through unchanged (raw engine ids preserved — backward compatible).
+    """
+    n = len(labeled)
+    merged: Dict = {}
+    for _, sample in labeled:
+        for k, v in sample.items():
+            if k in ("prefix_cache_engines", "external_prefix_cache_engines"):
+                continue
+            if isinstance(v, (int, float)):
+                merged[k] = merged.get(k, 0.0) + v
+    for k in _RATIO_KEYS & merged.keys():
+        merged[k] = merged[k] / n
+    for eng_key in ("prefix_cache_engines", "external_prefix_cache_engines"):
+        combined: Dict[str, Dict] = {}
+        for label, sample in labeled:
+            for eng, vals in sample.get(eng_key, {}).items():
+                key = f"{label}:{eng}" if n > 1 else eng
+                if key in combined:  # duplicate labels across targets
+                    key = f"{key}#{len(combined)}"
+                combined[key] = vals
+        if combined:
+            merged[eng_key] = combined
+    return merged
+
+
 class SystemMetricsPoller:
-    def __init__(self, endpoint: str, interval: int, backend: str):
-        self.endpoint = endpoint.rstrip("/")
+    """Polls one or more Prometheus endpoints and merges them into one view.
+
+    ``endpoint`` accepts a single URL or any collection of them (see
+    :func:`normalize_metrics_endpoints`) — PD-disaggregated services expose
+    one /metrics port per prefill/decode instance, and DP replicas likewise.
+    """
+
+    def __init__(self, endpoint, interval: int, backend: str):
+        self.targets: List[tuple[str, str]] = normalize_metrics_endpoints(endpoint)
+        # Back-compat attribute (first URL; empty string when none).
+        self.endpoint = self.targets[0][1] if self.targets else ""
         self.interval = interval
         self.backend = backend
         self.metrics_map = BACKEND_MAP.get(backend, VLLM_METRICS)
@@ -212,18 +318,19 @@ class SystemMetricsPoller:
                 logger.warning("Metrics poll error: %s", e)
             await asyncio.sleep(self.interval)
 
-    async def _poll_once(self) -> Optional[Dict]:
+    async def _fetch_one(self, url: str) -> Optional[Dict]:
+        """Fetch + parse one endpoint into an internal-name sample dict."""
         try:
-            async with self._session.get(self.endpoint) as resp:
+            async with self._session.get(url) as resp:
                 if resp.status != 200:
-                    logger.warning("Metrics endpoint returned status %d", resp.status)
+                    logger.warning("Metrics endpoint %s returned status %d", url, resp.status)
                     return None
                 text = await resp.text()
         except Exception as e:
-            logger.warning("Metrics endpoint request failed: %s", e)
+            logger.warning("Metrics endpoint %s request failed: %s", url, e)
             return None
         raw = parse_prometheus_metrics(text)
-        sample: Dict = {"timestamp": time.time()}
+        sample: Dict = {}
         sample.update(match_metrics(raw, self.metrics_map))
         # Per-engine breakdown (vllm token counters labeled with engine="N").
         # Empty for backends without engine labels; totals above still apply.
@@ -235,12 +342,31 @@ class SystemMetricsPoller:
                 sample["external_prefix_cache_engines"] = ext_eng
         return sample
 
-    async def snapshot(self) -> Optional[Dict]:
-        """Take a single metrics snapshot (for start/end of benchmark)."""
+    async def _poll_once(self) -> Optional[Dict]:
+        if not self.targets:
+            return None
         if not self._session or self._session.closed:
             self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10))
-        result = await self._poll_once()
-        return result
+        results = await asyncio.gather(
+            *[self._fetch_one(url) for _, url in self.targets]
+        )
+        labeled = [
+            (label, s)
+            for (label, _), s in zip(self.targets, results)
+            if s is not None
+        ]
+        if not labeled:
+            return None
+        merged = merge_endpoint_samples(labeled)
+        merged["timestamp"] = time.time()
+        if len(self.targets) > 1:
+            merged["metrics_endpoints_ok"] = len(labeled)
+            merged["metrics_endpoints_failed"] = len(self.targets) - len(labeled)
+        return merged
+
+    async def snapshot(self) -> Optional[Dict]:
+        """Take a single metrics snapshot (for start/end of benchmark)."""
+        return await self._poll_once()
 
     def get_samples(self) -> List[Dict]:
         return self._samples
@@ -357,24 +483,18 @@ def _base_url(endpoint: str) -> str:
     for suf in ("/v1/chat/completions", "/v1/completions", "/v1"):
         if endpoint.rstrip("/").endswith(suf):
             return endpoint.rstrip("/")[: -len(suf)]
-    return endpoint.rstrip("/").rstrip("/v1")
+    base = endpoint.rstrip("/")
+    # Metrics URLs (http://h:9101/metrics) also resolve to the server base.
+    if base.endswith("/metrics"):
+        base = base[: -len("/metrics")]
+    return base
 
 
-async def reset_prefix_cache(endpoint: str, backend: str) -> bool:
-    """POST to the backend's cache-reset endpoint. Returns True on success.
+async def _reset_one(url: str) -> bool:
+    """POST one cache-reset URL. Warns (non-fatal) on 404/5xx/errors."""
+    import aiohttp
 
-    Non-fatal: warns and returns False if the endpoint is missing or errors
-    (the benchmark proceeds; only the cache-baseline cleanliness is lost).
-    """
-    path = RESET_PATHS.get(backend)
-    if path is None:
-        logger.info("No prefix-cache reset endpoint known for backend %r; skipping.", backend)
-        return False
-    base = _base_url(endpoint)
-    url = base + path
     try:
-        import aiohttp
-
         async with aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=10)
         ) as session:
@@ -395,8 +515,54 @@ async def reset_prefix_cache(endpoint: str, backend: str) -> bool:
                         "measured hit rate may include residual prefixes.", url,
                     )
                 else:
-                    logger.warning("Prefix cache reset %s returned %d: %s", url, resp.status, body[:200])
+                    logger.warning(
+                        "Prefix cache reset %s returned %d: %s", url, resp.status, body[:200]
+                    )
                 return False
     except Exception as e:
         logger.warning("Prefix cache reset %s failed: %s", url, e)
         return False
+
+
+def reset_targets(endpoint) -> List[str]:
+    """Unique reset URLs for a request endpoint plus any metrics endpoints.
+
+    ``endpoint`` may be a single URL or a collection. PD-disaggregated /
+    multi-instance services expose one reset endpoint per instance, so every
+    distinct base URL gets its own POST.
+    """
+    if isinstance(endpoint, str):
+        endpoints = [endpoint]
+    else:
+        endpoints = [e for e in (endpoint or []) if e]
+    urls: List[str] = []
+    seen: set = set()
+    for e in endpoints:
+        base = _base_url(str(e).strip())
+        if base and base not in seen:
+            seen.add(base)
+            urls.append(base)
+    return urls
+
+
+async def reset_prefix_cache(endpoint, backend: str) -> bool:
+    """POST the backend's cache-reset endpoint(s). Returns True if any succeeded.
+
+    ``endpoint`` may be a single URL or a collection — every unique base URL
+    (request endpoint + metrics endpoints) is reset, matching multi-instance
+    deployments where each instance holds its own KV blocks.
+
+    Non-fatal: warns and returns False if the endpoints are missing or error
+    (the benchmark proceeds; only the cache-baseline cleanliness is lost).
+    """
+    path = RESET_PATHS.get(backend)
+    if path is None:
+        logger.info("No prefix-cache reset endpoint known for backend %r; skipping.", backend)
+        return False
+    urls = [base + path for base in reset_targets(endpoint)]
+    if not urls:
+        return False
+    any_ok = False
+    for url in urls:
+        any_ok = await _reset_one(url) or any_ok
+    return any_ok

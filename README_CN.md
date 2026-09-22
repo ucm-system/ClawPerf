@@ -247,7 +247,27 @@ backend: vllm
 | replay | `--recording --history-mode live\|verbatim` |
 | trace | `--trace-file --cache-budget-tokens/--cache-budget-gb --eviction-policy --trace-block-size --budget-sweep --trace-users --kv-bytes-per-token --model-context-length` |
 | 共享并发 | `--concurrency`（请求级：hitrate/replay/trace）；`--trace-users`（会话级：trace） |
-| 指标 | `--metrics-endpoint --metrics-interval --metrics-samples --reset-cache --backend` |
+| 指标 | `--metrics-endpoint`（可重复 / 逗号分隔；支持 `名称=url` 标签）`--metrics-interval --metrics-samples --reset-cache --backend` |
+
+### 多实例 / PD 分离服务的指标采集
+
+PD 分离（以及普通多副本）服务会**每个实例暴露一个 `/metrics` 端口**。把它们全部传入——ClawPerf 并发轮询所有端点并聚合成一个全局视图：计数器求和、比率类指标取均值、per-engine 明细按实例分行（引擎号带端点命名空间）：
+
+```bash
+clawperf --mode scenario \
+  --endpoint http://lb:9000/v1 --model qwen3 \
+  --metrics-endpoint prefill=http://10.0.0.1:9101/metrics \
+  --metrics-endpoint decode=http://10.0.0.2:9102/metrics
+```
+
+```
+|            Engine | Query Tokens | Hit Tokens | Hit Rate |
+| engine prefill:0  |       41,427 |     27,520 |   66.43% |
+| engine decode:0   |       40,287 |     26,752 |   66.40% |
+|            TOTAL  |       81,714 |     54,272 |   66.42% |
+```
+
+`--metrics-endpoint` 可重复指定，也接受逗号分隔列表和 `标签=url`（默认标签为 host:port）。`--reset-cache`（含 SLO 每步重置）会对每个实例的 reset 端口逐一重置。PD 部署中前缀缓存命中通常发生在 prefill 实例——这张表能直接看出复用发生在哪里。
 
 ## 输出
 

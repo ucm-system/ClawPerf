@@ -199,7 +199,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ── System metrics ──
     g = parser.add_argument_group("System Metrics")
-    g.add_argument("--metrics-endpoint", type=str, default=None)
+    g.add_argument("--metrics-endpoint", action="append", type=str, default=None,
+                   metavar="URL",
+                   help="Prometheus metrics endpoint. Repeatable (or comma-separated) "
+                        "for multi-instance / PD-disaggregated services where every "
+                        "prefill/decode instance exposes its own /metrics — counters are "
+                        "summed into one fleet-wide view with a per-instance engine "
+                        "breakdown. Optional label via 'name=url' (default: host:port).")
     g.add_argument("--metrics-interval", type=int, default=5)
     g.add_argument("--metrics-samples", action="store_true", default=False)
     g.add_argument("--reset-cache", action="store_true", default=False)

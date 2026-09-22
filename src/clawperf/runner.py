@@ -128,6 +128,16 @@ class BenchmarkRunner:
         self._consecutive_failures: int = 0
         self._abort_event = asyncio.Event()
 
+    async def _reset_prefix_caches(self):
+        """Reset the prefix cache on the request endpoint AND every metrics
+        endpoint — multi-instance / PD-disaggregated services hold KV blocks
+        per instance, so each gets its own reset."""
+        from clawperf.system_metrics import reset_prefix_cache
+        await reset_prefix_cache(
+            [self.config.endpoint, *self.config.metrics_endpoint],
+            self.config.backend,
+        )
+
     async def run(self):
         """Execute the full benchmark."""
         self._setup_start_time = time.monotonic()
@@ -217,8 +227,7 @@ class BenchmarkRunner:
         # AFTER the start snapshot so counters are unaffected (reset evicts KV
         # blocks, not cumulative counters); the delta still isolates our run.
         if self.config.reset_cache:
-            from clawperf.system_metrics import reset_prefix_cache
-            await reset_prefix_cache(self.config.endpoint, self.config.backend)
+            await self._reset_prefix_caches()
 
         setup_time = time.monotonic() - self._setup_start_time
         logger.info("Setup complete in %.2fs — starting benchmark", setup_time)
@@ -356,8 +365,7 @@ class BenchmarkRunner:
 
         # 3. Optional cache reset (clean baseline).
         if self.config.reset_cache:
-            from clawperf.system_metrics import reset_prefix_cache
-            await reset_prefix_cache(self.config.endpoint, self.config.backend)
+            await self._reset_prefix_caches()
 
         # 4. Set up the metrics poller (created here so --metrics-samples covers
         #    the whole test). The START snapshot is taken AFTER prefill below so
@@ -624,8 +632,7 @@ class BenchmarkRunner:
         a step summary with P{percentile} TTFT/TPOT, error rate, SLO verdict."""
         logger.info("  Step N=%d ...", n_users)
         if self.config.slo_step_reset_cache:
-            from clawperf.system_metrics import reset_prefix_cache
-            await reset_prefix_cache(self.config.endpoint, self.config.backend)
+            await self._reset_prefix_caches()
 
         total_turns = self.config.slo_step_warmup_turns + self.config.slo_step_turns
         # Fresh contexts per step (independent conversation state).
@@ -975,8 +982,7 @@ class BenchmarkRunner:
             self._metrics_start = await self.system_poller.snapshot()
             logger.info("Metrics start: %s", self._snapshot_summary(self._metrics_start))
         if self.config.reset_cache:
-            from clawperf.system_metrics import reset_prefix_cache
-            await reset_prefix_cache(self.config.endpoint, self.config.backend)
+            await self._reset_prefix_caches()
 
         setup_time = time.monotonic() - self._setup_start_time
         logger.info("Setup complete in %.2fs — starting agent run", setup_time)
@@ -1542,6 +1548,12 @@ class BenchmarkRunner:
             summary["external_prefix_cache_token_hit_rate"] = self._prefix_cache_delta.get("external_prefix_cache_token_hit_rate")
             summary["external_prefix_cache_hit_tokens_delta"] = self._prefix_cache_delta["external_prefix_cache_hit_tokens_delta"]
             summary["external_prefix_cache_query_tokens_delta"] = self._prefix_cache_delta["external_prefix_cache_query_tokens_delta"]
+            # Per-engine breakdown (incl. per-instance rows for multi-endpoint
+            # setups) — parity with hitrate mode's persisted summary.
+            if self._prefix_cache_delta.get("prefix_cache_engines"):
+                summary["prefix_cache_engines"] = self._prefix_cache_delta["prefix_cache_engines"]
+            if self._prefix_cache_delta.get("external_prefix_cache_engines"):
+                summary["external_prefix_cache_engines"] = self._prefix_cache_delta["external_prefix_cache_engines"]
 
         result = {
             "config": self.config.to_dict(),
@@ -1905,7 +1917,13 @@ class BenchmarkRunner:
         if not self.config.metrics_endpoint:
             print("  Metrics:      NOT configured — prefix cache data will not be collected", flush=True)
         else:
-            print(f"  Metrics:      {self.config.metrics_endpoint}", flush=True)
+            eps = list(self.config.metrics_endpoint)
+            if len(eps) == 1:
+                print(f"  Metrics:      {eps[0]}", flush=True)
+            else:
+                print(f"  Metrics:      {len(eps)} endpoints (aggregated):", flush=True)
+                for e in eps:
+                    print(f"                  {e}", flush=True)
         if self.config.history:
             print(f"  History:      {self.config.history} (append)", flush=True)
         print("=" * 70, flush=True)

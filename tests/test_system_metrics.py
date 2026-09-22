@@ -316,3 +316,155 @@ def test_per_engine_counter_reset():
     delta = poller.compute_prefix_cache_delta(start, end)
     assert delta["prefix_cache_engines"]["0"].get("counter_reset") is True
     assert "token_hit_rate" not in delta["prefix_cache_engines"]["0"]
+
+
+# --- Multi-endpoint support (PD-disaggregated / multi-instance) ----------------
+
+import pytest  # noqa: E402
+
+from clawperf.system_metrics import (
+    merge_endpoint_samples,
+    normalize_metrics_endpoints,
+    parse_metrics_target,
+    reset_targets,
+)
+
+
+def test_parse_metrics_target_default_label():
+    assert parse_metrics_target("http://10.0.0.1:9101/metrics") == ("10.0.0.1:9101", "http://10.0.0.1:9101/metrics")
+    assert parse_metrics_target("https://h/metrics") == ("h", "https://h/metrics")
+
+
+def test_parse_metrics_target_explicit_label():
+    assert parse_metrics_target("prefill=http://h:9101/metrics") == ("prefill", "http://h:9101/metrics")
+    assert parse_metrics_target("decode=https://h:9102/metrics") == ("decode", "https://h:9102/metrics")
+
+
+def test_parse_metrics_target_no_scheme():
+    # Label-less URL without a scheme: label falls back to the whole spec.
+    assert parse_metrics_target("h:9101/metrics") == ("h:9101/metrics", "h:9101/metrics")
+
+
+def test_parse_metrics_target_url_with_equals_not_split():
+    # A query string containing '=' must not be mistaken for a label.
+    label, url = parse_metrics_target("http://h:9101/metrics?x=1")
+    assert label == "h:9101"
+    assert url == "http://h:9101/metrics?x=1"
+
+
+def test_normalize_metrics_endpoints_forms():
+    single = normalize_metrics_endpoints("http://h:1/metrics")
+    assert single == [("h:1", "http://h:1/metrics")]
+    comma = normalize_metrics_endpoints("http://h:1/metrics, http://h:2/metrics")
+    assert comma == [("h:1", "http://h:1/metrics"), ("h:2", "http://h:2/metrics")]
+    listed = normalize_metrics_endpoints(["p=http://h:1/metrics", "http://h:2/metrics,a=http://h:3/m"])
+    assert listed == [
+        ("p", "http://h:1/metrics"),
+        ("h:2", "http://h:2/metrics"),
+        ("a", "http://h:3/m"),
+    ]
+
+
+def test_normalize_metrics_endpoints_dedupe_and_empty():
+    assert normalize_metrics_endpoints(None) == []
+    assert normalize_metrics_endpoints("") == []
+    assert normalize_metrics_endpoints([]) == []
+    assert normalize_metrics_endpoints(("http://h:1/metrics", "http://h:1/metrics")) == [
+        ("h:1", "http://h:1/metrics")
+    ]
+
+
+def test_poller_accepts_single_and_multiple():
+    p1 = SystemMetricsPoller("http://h:1/metrics", 5, "vllm")
+    assert p1.targets == [("h:1", "http://h:1/metrics")]
+    assert p1.endpoint == "http://h:1/metrics"
+    p2 = SystemMetricsPoller(["p=http://h:1/metrics", "http://h:2/metrics"], 5, "vllm")
+    assert [l for l, _ in p2.targets] == ["p", "h:2"]
+    p3 = SystemMetricsPoller(None, 5, "vllm")
+    assert p3.targets == [] and p3.endpoint == ""
+
+
+def _endpoint_sample(queries, hits, kv_usage, engines=None, ext_engines=None):
+    s = {
+        "prefix_cache_query_tokens": queries,
+        "prefix_cache_hit_tokens": hits,
+        "kv_cache_usage": kv_usage,
+        "num_running": 1,
+    }
+    if engines:
+        s["prefix_cache_engines"] = engines
+    if ext_engines:
+        s["external_prefix_cache_engines"] = ext_engines
+    return s
+
+
+def test_merge_endpoint_samples_sums_counters_averages_ratios():
+    a = _endpoint_sample(1000, 500, 0.2, engines={"0": {"hit_tokens": 500, "query_tokens": 1000}})
+    b = _endpoint_sample(3000, 1500, 0.6, engines={"0": {"hit_tokens": 1500, "query_tokens": 3000}})
+    merged = merge_endpoint_samples([("a", a), ("b", b)])
+    assert merged["prefix_cache_query_tokens"] == 4000
+    assert merged["prefix_cache_hit_tokens"] == 2000
+    assert merged["num_running"] == 2
+    assert merged["kv_cache_usage"] == pytest.approx(0.4)  # mean, not sum
+    # Engine ids namespaced per endpoint: same 'engine 0' stays distinguishable.
+    assert set(merged["prefix_cache_engines"]) == {"a:0", "b:0"}
+
+
+def test_merge_endpoint_samples_single_passthrough():
+    a = _endpoint_sample(1000, 500, 0.2, engines={"0": {"hit_tokens": 500, "query_tokens": 1000}})
+    merged = merge_endpoint_samples([("a", a)])
+    assert merged["prefix_cache_query_tokens"] == 1000
+    assert merged["kv_cache_usage"] == 0.2
+    # Single endpoint keeps raw engine ids (backward compatible).
+    assert set(merged["prefix_cache_engines"]) == {"0"}
+
+
+def test_merge_endpoint_samples_partial_reporters():
+    """One endpoint not exposing a metric must not zero-out or break the rest."""
+    a = _endpoint_sample(1000, 500, 0.2)
+    b = {"prefix_cache_query_tokens": 10, "prefix_cache_hit_tokens": 5}  # no kv_usage
+    merged = merge_endpoint_samples([("a", a), ("b", b)])
+    assert merged["prefix_cache_query_tokens"] == 1010
+    # Ratio averaged over the endpoints that DID report it.
+    assert merged["kv_cache_usage"] == pytest.approx(0.2 / 2)
+
+
+def test_multi_endpoint_delta_hit_rate():
+    """End-to-end delta math over a merged (two-instance) snapshot pair."""
+    poller = SystemMetricsPoller(["a=http://h:1/metrics", "b=http://h:2/metrics"], 5, "vllm")
+    start = {
+        "prefix_cache_hit_tokens": 500, "prefix_cache_query_tokens": 1000,
+        "prefix_cache_engines": {
+            "a:0": {"hit_tokens": 500, "query_tokens": 1000},
+            "b:0": {"hit_tokens": 0, "query_tokens": 0},
+        },
+    }
+    end = {
+        "prefix_cache_hit_tokens": 1000, "prefix_cache_query_tokens": 3000,
+        "prefix_cache_engines": {
+            "a:0": {"hit_tokens": 1000, "query_tokens": 2000},
+            "b:0": {"hit_tokens": 0, "query_tokens": 1000},
+        },
+    }
+    delta = poller.compute_prefix_cache_delta(start, end)
+    assert delta["prefix_cache_query_tokens_delta"] == 2000
+    assert delta["prefix_cache_hit_tokens_delta"] == 500
+    assert delta["prefix_cache_token_hit_rate"] == 0.25
+    assert delta["prefix_cache_engines"]["a:0"]["token_hit_rate"] == 0.5
+    # b:0 served queries but never hit: rate is 0.0, not missing.
+    assert delta["prefix_cache_engines"]["b:0"]["token_hit_rate"] == 0.0
+
+
+def test_reset_targets_request_plus_metrics():
+    urls = reset_targets([
+        "http://h:9100/v1/chat/completions",
+        "http://h:9101/metrics",
+        "http://h:9101/metrics",   # duplicate → one reset
+        "http://h:9100/v1",        # same base as the request endpoint → dedup
+    ])
+    assert urls == ["http://h:9100", "http://h:9101"]
+
+
+def test_reset_targets_single_string():
+    assert reset_targets("http://h:9100/v1") == ["http://h:9100"]
+    assert reset_targets([]) == []

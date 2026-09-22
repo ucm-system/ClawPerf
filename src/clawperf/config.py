@@ -232,7 +232,11 @@ class BenchmarkConfig:
     request_timeout: int = 600
 
     # ── System metrics configuration ──
-    metrics_endpoint: Optional[str] = None
+    # One or more Prometheus endpoints (multi-instance / PD-disaggregated
+    # serving exposes one /metrics port per prefill/decode instance).
+    # Accepts a single URL, a comma-separated string, or a list; each entry
+    # may carry a label via 'name=url'. Normalized to a tuple of raw strings.
+    metrics_endpoint: tuple = ()
     metrics_interval: int = 5
     metrics_samples: bool = False
     reset_cache: bool = False
@@ -254,8 +258,26 @@ class BenchmarkConfig:
             from datetime import datetime
             self.output = f"results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         self._normalize_slo_constraints()
+        self._normalize_metrics_endpoints()
         self._parse_arrival_mode()
         self._apply_profile()
+
+    def _normalize_metrics_endpoints(self):
+        """Accept a single URL, a comma-separated string (env var), or a list
+        (YAML / repeated CLI flag; elements may themselves be comma-separated
+        or carry a 'label=' prefix) — stored as a flat tuple of raw strings."""
+        raw = self.metrics_endpoint
+        if raw is None or raw == "":
+            self.metrics_endpoint = ()
+        elif isinstance(raw, str):
+            self.metrics_endpoint = tuple(s.strip() for s in raw.split(",") if s.strip())
+        elif isinstance(raw, (list, tuple)):
+            flat = []
+            for item in raw:
+                if item is None:
+                    continue
+                flat.extend(s.strip() for s in str(item).split(",") if s.strip())
+            self.metrics_endpoint = tuple(flat)
 
     def _normalize_slo_constraints(self):
         """Accept a comma-separated string (env var) or list (YAML) and validate

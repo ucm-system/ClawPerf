@@ -76,6 +76,21 @@
 
 1. **灵活 SLO 约束**（本次主要需求）：`--slo ttft.p99<=1500 --slo tpot.avg<=30 --slo e2e.max<=30000`，可重复、任意组合；旧 `--slo-ttft-ms/--slo-tpot-ms/--slo-percentile` 自动等价转换；容量曲线表/Markdown 报告/JSON 摘要均按约束动态出列；旧结果文件 `clawperf report` 仍按旧列渲染（向后兼容）。
 2. **`--model-context-length` 作用于 trace 回放**：精确分词（提供 `--tokenizer` 时）→ 逐请求裁剪 `max_tokens` → 溢出请求跳过并归类为 `context overflow`。
+3. **多 metrics 端点聚合**（PD 分离/多副本场景，见 §5.1）：`--metrics-endpoint` 可重复/逗号分隔/`标签=url`；计数器求和、比率取均值、per-engine 按实例分行；`--reset-cache` 对每个实例逐一重置。
+
+## 5.1 多实例 / PD 分离指标采集（真实环境模拟验证）
+
+PD 分离服务每个 prefill/decode 实例各暴露一个 `/metrics` 端口。为验证多端点聚合，在服务器上起了 **2 个独立 vLLM 实例**（davinci6:9155 + davinci7:9156，同 Qwen3-0.6B）和一个**轮询反代**（:9150，aiohttp 流式透传，请求交替打到两个实例）模拟单一服务入口。
+
+| # | 场景 | 命令要点 | 结果 | 验证点 |
+|---|------|----------|------|--------|
+| A | 基线：单实例+单 metrics | endpoint=A, metrics=[A] | 49.90% | 与目标 50% 对齐 |
+| B | 聚合数学：A 服务 + [A, B空闲] | metrics=[A,B] | **49.90%（不变）** | 空闲端点不扭曲总值；引擎表出现 `110.138.0.3:9155:0`（49.90%）与 `110.138.0.3:9156:0`（0 查询）两行 |
+| C | PD 模拟：RR 代理 + [A,B] | endpoint=proxy | 47.41% | 两实例查询均分（82,082/82,080）、命中率一致；总表正确汇总 |
+| D | PD 标签：`prefill=`/`decode=` | metrics=[prefill=A, decode=B] | 44.91%（20 请求） | 引擎表显示 `engine prefill:0` / `engine decode:0` + TOTAL 行 |
+| E | scenario 多轮会话过代理 | 2 用户 × 4 轮 | 66.42% | per-engine 明细（66.43%/66.40%）首次落盘到 JSON |
+
+**真实发现（RR 路由 + 实例本地缓存）**：预期 RR 会把命中率砍半（25%），实测 47.41%——前缀缓存是内容寻址、懒填充的：每个实例首次见到某前缀就自行缓存，跨实例路由只损失**重复冷启动**（每实例每前缀多一次 miss，2.5pp），而不是一半命中。对 PD 部署的启示：prefill/decode 各自的本地缓存会各自累积前缀，跨实例的 KV 迁移省的是冷启动成本，稳态命中率由内容寻址保证。逐实例引擎表正是观察这一行为的工具。
 
 ## 6. 可服务性 / 易用性评估（后续建议）
 
@@ -176,6 +191,17 @@ clawperf --mode hitrate --endpoint http://127.0.0.1:9100/v1 --model mock \
   --prefix-num 2 --output-len 16 --concurrency 3 \
   --metrics-endpoint http://127.0.0.1:9100/metrics --backend vllm \
   --reset-cache --output results_e2e/mock_hitrate.json
+
+# 多实例 / PD 模拟（2 实例 + 轮询反代，见 §5.1；脚本在 examples/pd_sim/）
+# 服务端：bash examples/pd_sim/start_pd_sim.sh
+#   （起 clawperf-pd-a: davinci6/9155、clawperf-pd-b: davinci7/9156、clawperf-rr: 9150 轮询代理）
+clawperf --mode hitrate --endpoint http://110.138.0.3:9150/v1 --model qwen3 \
+  --tokenizer tokenizers/qwen3-0.6b \
+  --num-requests 40 --input-len 4096 --hit-rate 0.5 --prefix-num 2 \
+  --output-len 32 --concurrency 4 \
+  --metrics-endpoint prefill=http://110.138.0.3:9155/metrics \
+  --metrics-endpoint decode=http://110.138.0.3:9156/metrics \
+  --reset-cache --output results_e2e/pd_labels.json
 ```
 
 ## 8. 测试环境与注意事项
@@ -184,4 +210,4 @@ clawperf --mode hitrate --endpoint http://127.0.0.1:9100/v1 --model mock \
 - **vLLM 配置**: tool-calling 需 `--enable-auto-tool-choice --tool-call-parser qwen3_xml`（此版本无 `qwen3`/`hermes` 之外的 Qwen3 解析器名）。
 - **前缀缓存 reset**: vllm-ascend 0.23.0 无 `/reset_prefix_cache` 端点（404 警告后继续，delta 计算仍隔离窗口）。
 - **模型窗口**: 本轮 `Qwen3-0.6B` 为 32K 窗口（上轮 E2E 用的是 131072 yarn 版本）；长会话尾部请求（输入 ~39.5K tokens）物理上放不进 32K，属预期跳过而非缺陷。
-- **NPU 资源**: 服务器 8 卡中仅占用空闲的 davinci6；测试结束即 `docker rm -f clawperf-e2e`。
+- **NPU 资源**: 主轮只占 davinci6；多实例模拟轮占 davinci6+davinci7（均为空闲卡）；测试结束即 `docker rm -f clawperf-pd-a clawperf-pd-b clawperf-rr`。

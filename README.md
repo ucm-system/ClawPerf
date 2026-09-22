@@ -260,7 +260,27 @@ backend: vllm
 | replay | `--recording --history-mode live\|verbatim` |
 | trace | `--trace-file --cache-budget-tokens/--cache-budget-gb --eviction-policy --trace-block-size --budget-sweep --trace-users --kv-bytes-per-token --model-context-length` |
 | Shared concurrency | `--concurrency` (request-level: hitrate/replay/trace); `--trace-users` (session-level: trace) |
-| Metrics | `--metrics-endpoint --metrics-interval --metrics-samples --reset-cache --backend` |
+| Metrics | `--metrics-endpoint` (repeatable / comma-separated; `name=url` labels) `--metrics-interval --metrics-samples --reset-cache --backend` |
+
+### Multi-instance & PD-disaggregated metrics
+
+PD-disaggregated (and plain multi-replica) services expose **one `/metrics` port per instance**. Pass them all — ClawPerf polls every endpoint concurrently and merges them into one fleet-wide view: counters are summed, ratio gauges averaged, and the per-engine breakdown gains one row per instance (engine ids namespaced by endpoint):
+
+```bash
+clawperf --mode scenario \
+  --endpoint http://lb:9000/v1 --model qwen3 \
+  --metrics-endpoint prefill=http://10.0.0.1:9101/metrics \
+  --metrics-endpoint decode=http://10.0.0.2:9102/metrics
+```
+
+```
+|            Engine | Query Tokens | Hit Tokens | Hit Rate |
+| engine prefill:0  |       41,427 |     27,520 |   66.43% |
+| engine decode:0   |       40,287 |     26,752 |   66.40% |
+|            TOTAL  |       81,714 |     54,272 |   66.42% |
+```
+
+`--metrics-endpoint` is repeatable and also accepts comma-separated lists and `label=url` (default label: host:port). `--reset-cache` (and SLO's per-step reset) hits every instance's reset endpoint. In a PD deployment the prefill instance usually carries the prefix-cache hits — this table shows exactly where reuse happens.
 
 ## Output
 
