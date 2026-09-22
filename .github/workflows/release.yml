@@ -109,6 +109,10 @@ jobs:
     needs: verify
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
       - name: Create the draft (idempotent)
         env:
           TAG: ${{ needs.verify.outputs.tag }}
@@ -395,6 +399,10 @@ jobs:
     needs: [verify, release-init, dist, pypi, image, manifest]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
       - name: Collect the per-file checksums
         env:
           TAG: ${{ needs.verify.outputs.tag }}
