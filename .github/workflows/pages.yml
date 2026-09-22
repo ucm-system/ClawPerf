@@ -50,6 +50,11 @@ jobs:
         # if it drifts from clawperf --help the site would quietly lie.
         run: python3 scripts/gen_reference.py --check
 
+      - name: Layout check in real Chrome
+        # Verifies the rendered page: left index present and sticky, headings
+        # large enough, no horizontal overflow, every image loaded.
+        run: python3 scripts/check_layout.py
+
       - name: Validate the diagram geometry
         # Overlapping boxes, clipped labels and detached arrows are caught by
         # the same rules the diagrams were drawn against.

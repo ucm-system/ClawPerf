@@ -186,13 +186,21 @@ def test_pages_show_the_screenshots():
         assert "docs/shots/slo.png" in (ROOT / readme).read_text(encoding="utf-8")
 
 
-def test_landing_page_has_a_table_of_contents():
-    """The landing page must be navigable: every section is reachable by link."""
+def test_landing_page_has_a_left_index():
+    """The landing page needs a real index: a sidebar with the mode tree."""
     index = (ROOT / "docs" / "index.html").read_text(encoding="utf-8")
-    sections = [s for s in re.findall(r'<section id="([^"]+)"', index) if s != "contents"]
+    assert 'class="toc"' in index, "no index element"
+    assert "<main>" in index, "content is not wrapped in <main> next to the index"
+    sections = [s for s in re.findall(r'<section id="([^"]+)"', index)]
     assert len(sections) >= 5, sections
     for anchor in sections:
         assert f'href="#{anchor}"' in index, f"section #{anchor} is not linked from anywhere"
+    # every mode has its own index entry
+    for mode in ("scenario", "hitrate", "slo", "agent", "trace", "replay"):
+        assert f'href="#mode-{mode}"' in index, f"#{mode} is missing from the index"
+    # …and the index links out to the reference's sections too
+    for anchor in ("#params", "#env", "#exit", "#trouble"):
+        assert f"reference.html{anchor}" in index, f"index does not link to reference.html{anchor}"
 
 
 # Flags that belong to *other* tools, legitimately mentioned in the docs.

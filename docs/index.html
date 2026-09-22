@@ -154,16 +154,37 @@
     text-transform: uppercase; color: var(--text-muted); margin: 22px 0 8px;
   }
 
-  /* ── contents ── */
-  .toc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
-  a.toc-card {
-    display: block; background: var(--card); border: 1px solid var(--border);
-    border-radius: 14px; padding: 18px 20px; color: var(--text); box-shadow: var(--shadow);
+  /* ── layout: sticky left index + content ── */
+  .layout { display: grid; grid-template-columns: 264px minmax(0, 1fr); gap: 48px; align-items: start; }
+  .layout > main { min-width: 0; }
+  /* inside the layout the column already constrains width */
+  .layout main .wrap { max-width: none; padding: 0; }
+
+  details.toc {
+    position: sticky; top: 84px;
+    max-height: calc(100vh - 108px); overflow-y: auto;
+    padding: 16px 16px 16px 18px;
+    background: var(--bg-soft); border: 1px solid var(--border); border-radius: 14px;
+    font-size: 14.5px;
   }
-  a.toc-card:hover { text-decoration: none; border-color: var(--accent); }
-  a.toc-card b { display: block; font-size: 17px; margin-bottom: 6px; }
-  a.toc-card b i { font-style: normal; color: var(--accent); margin-right: 8px; font-variant-numeric: tabular-nums; }
-  a.toc-card span { font-size: 14.5px; color: var(--text-muted); }
+  details.toc > summary {
+    display: none; cursor: pointer; font-weight: 700; color: var(--text);
+    list-style: none; padding: 2px 0;
+  }
+  details.toc > summary::-webkit-details-marker { display: none; }
+  details.toc > summary::after { content: " ▾"; color: var(--text-muted); }
+  nav.toc-nav { display: grid; gap: 2px; }
+  nav.toc-nav a {
+    display: block; color: var(--text-soft); padding: 5px 10px; border-radius: 8px;
+    border-left: 2px solid transparent; line-height: 1.45;
+  }
+  nav.toc-nav a:hover { color: var(--accent); background: var(--bg); text-decoration: none; }
+  nav.toc-nav a.active { color: var(--accent); background: var(--bg); border-left-color: var(--accent); font-weight: 600; }
+  nav.toc-nav a.lvl1 { font-weight: 600; color: var(--text); margin-top: 6px; }
+  nav.toc-nav a.lvl2 { padding-left: 24px; font-size: 13.5px; }
+  nav.toc-nav .num { color: var(--text-muted); font-variant-numeric: tabular-nums; margin-right: 7px; font-weight: 600; }
+  nav.toc-nav a.lvl1.active .num, nav.toc-nav a.lvl1:hover .num { color: var(--accent); }
+  nav.toc-nav .sep { height: 1px; background: var(--border); margin: 8px 0; }
 
   /* ── generic blocks ── */
   .grid { display: grid; gap: 16px; }
@@ -225,6 +246,11 @@
   footer h4 { margin: 0 0 8px; font-size: 13px; color: var(--text-soft); text-transform: uppercase; letter-spacing: .04em; }
   footer ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
 
+  @media (max-width: 1100px) {
+    .layout { grid-template-columns: 1fr; gap: 0; }
+    details.toc { position: static; max-height: none; margin-bottom: 24px; }
+    details.toc > summary { display: block; }
+  }
   @media (max-width: 780px) {
     nav.links { display: none; }
     .bar { grid-template-columns: 76px 1fr 80px; }
@@ -283,47 +309,37 @@
   </div>
 </div>
 
-<section id="contents">
-  <div class="wrap">
-    <p class="eyebrow"><span class="en">Contents</span><span class="zh">目录</span></p>
-    <h2><span class="en">Where to start</span><span class="zh">从这里开始</span></h2>
-    <p class="sub en">Read the quick start, then jump to the mode that answers your question. Every mode section has: why it exists, the command, the parameters that matter, and what the output looks like.</p>
-    <p class="sub zh">先看快速开始，再直接跳到能回答你问题的那个模式。每个模式都按「为什么做 → 怎么用 → 关键参数 → 运行效果」组织。</p>
+<div class="layout wrap">
 
-    <div class="toc-grid">
-      <a class="toc-card" href="#quickstart">
-        <b><i>1</i><span class="en">Quick start</span><span class="zh">快速开始</span></b>
-        <span class="en">Install, run the default mode in one command, see what it prints.</span>
-        <span class="zh">安装、一条命令跑起默认模式、看懂输出。</span>
-      </a>
-      <a class="toc-card" href="#modes">
-        <b><i>2</i><span class="en">Modes in depth</span><span class="zh">模式详解</span></b>
-        <span class="en">scenario · hitrate · slo · agent · trace · record &amp; replay — why, how, parameters, output.</span>
-        <span class="zh">scenario · hitrate · slo · agent · trace · record &amp; replay —— 为什么、怎么用、参数、输出。</span>
-      </a>
-      <a class="toc-card" href="#config">
-        <b><i>3</i><span class="en">Configuration</span><span class="zh">配置</span></b>
-        <span class="en">Context profiles, suites, pacing knobs and metrics endpoints.</span>
-        <span class="zh">上下文档位、套件、施压节奏与指标端点。</span>
-      </a>
-      <a class="toc-card" href="#results">
-        <b><i>4</i><span class="en">Measured on real hardware</span><span class="zh">真机实测</span></b>
-        <span class="en">What the numbers look like on an Ascend 910B3 — including PD separation.</span>
-        <span class="zh">昇腾 910B3 上的真实数字 —— 含 PD 分离。</span>
-      </a>
-      <a class="toc-card" href="#stack">
-        <b><i>5</i><span class="en">Where it fits</span><span class="zh">适用场景</span></b>
-        <span class="en">Backends, trace formats, mock server, CI exit codes, release pipeline.</span>
-        <span class="zh">后端、trace 格式、mock server、CI 退出码、发布流水线。</span>
-      </a>
-      <a class="toc-card" href="reference.html">
-        <b><i>→</i><span class="en">Full reference</span><span class="zh">完整参考</span></b>
-        <span class="en">All 73 parameters with defaults and Chinese descriptions, generated from <code class="inline">--help</code>.</span>
-        <span class="zh">全部 73 个参数（含默认值与中文说明），由 <code class="inline">--help</code> 自动生成。</span>
-      </a>
-    </div>
-  </div>
-</section>
+  <details class="toc" id="toc">
+    <summary><span class="en">Contents</span><span class="zh">目录</span></summary>
+    <nav class="toc-nav">
+      <a class="lvl1" href="#quickstart"><span class="num">1</span><span class="en">Quick start</span><span class="zh">快速开始</span></a>
+      <a class="lvl2" href="#quickstart"><span class="en">Install &amp; first run</span><span class="zh">安装与首次运行</span></a>
+      <a class="lvl1" href="#modes"><span class="num">2</span><span class="en">Modes in depth</span><span class="zh">模式详解</span></a>
+      <a class="lvl2" href="#mode-scenario"><span class="en">scenario — growing conversations</span><span class="zh">scenario —— 增长的会话</span></a>
+      <a class="lvl2" href="#mode-hitrate"><span class="en">hitrate — is the cache working?</span><span class="zh">hitrate —— 缓存是否生效</span></a>
+      <a class="lvl2" href="#mode-slo"><span class="en">slo — capacity under a budget</span><span class="zh">slo —— 预算下的容量</span></a>
+      <a class="lvl2" href="#mode-agent"><span class="en">agent — real tool calls</span><span class="zh">agent —— 真实工具调用</span></a>
+      <a class="lvl2" href="#mode-trace"><span class="en">trace — your own traffic</span><span class="zh">trace —— 用你的流量</span></a>
+      <a class="lvl2" href="#mode-replay"><span class="en">record &amp; replay</span><span class="zh">record &amp; replay —— 录制与回放</span></a>
+      <a class="lvl2" href="#more-captures"><span class="en">More captures</span><span class="zh">更多截图</span></a>
+      <a class="lvl1" href="#config"><span class="num">3</span><span class="en">Configuration</span><span class="zh">配置</span></a>
+      <a class="lvl2" href="#profiles"><span class="en">Context profiles &amp; suites</span><span class="zh">上下文档位与套件</span></a>
+      <a class="lvl2" href="#pacing"><span class="en">Pacing &amp; concurrency</span><span class="zh">节奏与并发</span></a>
+      <a class="lvl2" href="#metrics"><span class="en">Metrics endpoints</span><span class="zh">指标端点</span></a>
+      <a class="lvl1" href="#results"><span class="num">4</span><span class="en">Measured on real hardware</span><span class="zh">真机实测</span></a>
+      <a class="lvl1" href="#stack"><span class="num">5</span><span class="en">Where it fits</span><span class="zh">适用场景</span></a>
+      <div class="sep"></div>
+      <a class="lvl1" href="reference.html"><span class="en">Full reference →</span><span class="zh">完整参考 →</span></a>
+      <a class="lvl2" href="reference.html#params"><span class="en">All 73 parameters</span><span class="zh">全部 73 个参数</span></a>
+      <a class="lvl2" href="reference.html#env"><span class="en">Env vars &amp; config file</span><span class="zh">环境变量与配置文件</span></a>
+      <a class="lvl2" href="reference.html#exit"><span class="en">Output &amp; exit codes</span><span class="zh">产物与退出码</span></a>
+      <a class="lvl2" href="reference.html#trouble"><span class="en">Troubleshooting</span><span class="zh">故障排查</span></a>
+    </nav>
+  </details>
+
+  <main>
 
 <section id="quickstart">
   <div class="wrap">
@@ -657,7 +673,7 @@ clawperf --mode replay --recording session.jsonl \
       </figcaption>
     </figure>
 
-    <h3 class="plain"><span class="en">More captures</span><span class="zh">更多截图</span></h3>
+    <h3 class="plain" id="more-captures"><span class="en">More captures</span><span class="zh">更多截图</span></h3>
     <p class="sub en">The result tables behind those reports, and the diagnostic you will meet first if you copy an SLO example without quotes.</p>
     <p class="sub zh">报告背后的结果明细表，以及不加引号复制 SLO 示例时最先遇到的报错提示。</p>
 
@@ -710,7 +726,7 @@ clawperf --mode replay --recording session.jsonl \
     <p class="sub en">Everything else — all 73 parameters, their defaults and accepted values — is in the <a href="reference.html#params">reference</a>, generated from <code class="inline">clawperf --help</code>.</p>
     <p class="sub zh">其余全部内容 —— 73 个参数、默认值与可选值 —— 都在<a href="reference.html#params">完整参考</a>里，由 <code class="inline">clawperf --help</code> 自动生成。</p>
 
-    <h3 class="plain"><span class="en">Context profiles — the whole set</span><span class="zh">上下文档位 —— 全部档位</span></h3>
+    <h3 class="plain" id="profiles"><span class="en">Context profiles — the whole set</span><span class="zh">上下文档位 —— 全部档位</span></h3>
     <p class="sub en">A profile sets the shared system prefix, the per-user prefix and the per-turn input at once, so you do not have to invent token counts.</p>
     <p class="sub zh">一个档位同时设定共享系统前缀、每用户前缀与每轮输入三个数字，免去自己拼 token 数。</p>
     <div class="tbl-scroll">
@@ -740,7 +756,7 @@ clawperf --mode replay --recording session.jsonl \
       <span class="zh"><b>套件</b>会按序跑完（并发 × 档位）的笛卡尔积，每个场景各写一份结果文件：<code class="inline">quick</code>（3 个并发档 × fresh）、<code class="inline">standard</code>（4 × medium+long）、<code class="inline">full</code>（6 × fresh→full）、<code class="inline">hitrate</code>（1 × fresh→full）。<code class="inline">--model-context-length</code> 会跳过放不进模型窗口的档位。</span>
     </p>
 
-    <h3 class="plain"><span class="en">Pacing &amp; concurrency — four knobs, easy to confuse</span><span class="zh">节奏与并发 —— 四个容易混淆的旋钮</span></h3>
+    <h3 class="plain" id="pacing"><span class="en">Pacing &amp; concurrency — four knobs, easy to confuse</span><span class="zh">节奏与并发 —— 四个容易混淆的旋钮</span></h3>
     <div class="tbl-scroll">
       <table>
         <thead>
@@ -759,7 +775,7 @@ clawperf --mode replay --recording session.jsonl \
       </table>
     </div>
 
-    <h3 class="plain"><span class="en">Metrics: one endpoint per instance</span><span class="zh">指标：每个实例一个端点</span></h3>
+    <h3 class="plain" id="metrics"><span class="en">Metrics: one endpoint per instance</span><span class="zh">指标：每个实例一个端点</span></h3>
     <p class="sub en">PD-disaggregated and multi-replica services expose one <code class="inline">/metrics</code> per instance. Pass them all: counters are summed into a fleet-wide view, ratio gauges averaged, and the per-engine table gains one row per instance.</p>
     <p class="sub zh">PD 分离与多副本服务每个实例各暴露一个 <code class="inline">/metrics</code>。全部传进来即可：计数器求和成全局视图、比率类指标取均值、逐引擎表按实例分行。</p>
     <pre><code>clawperf --mode scenario \
@@ -880,6 +896,8 @@ clawperf --mode replay --recording session.jsonl \
     </figure>
   </div>
 </section>
+  </main>
+</div>
 
 <footer>
   <div class="wrap cols">
@@ -959,6 +977,43 @@ clawperf --mode replay --recording session.jsonl \
     root.setAttribute('data-theme', cur);
     root.setAttribute('data-theme-choice', cur);
     applyTheme();
+  });
+
+  // ── left index ─────────────────────────────────────────────────────────
+  // Wide screens: the sidebar is always open (CSS hides its <summary>).
+  // Narrow screens: it collapses into a disclosure at the top of the page.
+  var toc = document.getElementById('toc');
+  var wide = window.matchMedia('(min-width: 1101px)');
+  function syncToc() { if (wide.matches) { toc.open = true; } }
+  syncToc();
+  if (wide.addEventListener) { wide.addEventListener('change', syncToc); }
+
+  // Scroll-spy: highlight the entry for the section currently on screen.
+  var links = Array.prototype.slice.call(toc.querySelectorAll('a[href^="#"]'));
+  var targets = links.map(function (a) {
+    return document.getElementById(a.getAttribute('href').slice(1));
+  }).filter(Boolean);
+  if ('IntersectionObserver' in window && targets.length) {
+    var visible = {};
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        visible[e.target.id] = e.isIntersecting ? e.intersectionRatio : 0;
+      });
+      var best = null;
+      Object.keys(visible).forEach(function (id) {
+        if (visible[id] > 0 && (!best || visible[id] > visible[best])) { best = id; }
+      });
+      if (best) {
+        links.forEach(function (a) {
+          a.classList.toggle('active', a.getAttribute('href') === '#' + best);
+        });
+      }
+    }, { rootMargin: '-84px 0px -55% 0px', threshold: [0, 0.15, 0.4, 0.75, 1] });
+    targets.forEach(function (t) { observer.observe(t); });
+  }
+  toc.addEventListener('click', function (e) {
+    // Follow the link, then fold the disclosure away on narrow screens.
+    if (e.target.closest && e.target.closest('a') && !wide.matches) { toc.open = false; }
   });
 })();
 </script>

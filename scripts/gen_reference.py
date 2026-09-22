@@ -692,8 +692,8 @@ TEMPLATE = """<!DOCTYPE html>
   .toc a:hover {{ border-color: var(--accent); color: var(--accent); text-decoration: none; }}
 
   section {{ padding: 34px 0; border-top: 1px solid var(--border); }}
-  section > .wrap > h2 {{ font-size: 23px; margin: 0 0 6px; letter-spacing: -.01em; }}
-  h3 {{ font-size: 18px; margin: 26px 0 6px; }}
+  section > .wrap > h2 {{ font-size: clamp(26px, 3.4vw, 34px); line-height: 1.2; margin: 0 0 8px; letter-spacing: -.02em; }}
+  h3 {{ font-size: 22px; margin: 30px 0 8px; letter-spacing: -.01em; }}
   h3:first-child {{ margin-top: 0; }}
   h4.mode-params {{ font-size: 16px; margin: 26px 0 4px; color: var(--text-soft); }}
   p.sub {{ color: var(--text-muted); margin: 0 0 14px; max-width: 820px; }}

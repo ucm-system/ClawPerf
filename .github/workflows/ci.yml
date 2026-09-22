@@ -51,6 +51,11 @@ jobs:
         # profiles; a new/renamed flag without regenerating fails here.
         run: python3 scripts/gen_reference.py --check
 
+      - name: Layout check (index, headings, overflow) in real Chrome
+        # "There is no index" and "the headings are too small" are not things a
+        # tag-balance check can catch; this measures the rendered page.
+        run: python3 scripts/check_layout.py
+
       - name: Lint the workflow files (actionlint)
         # Catches failure modes GitHub only reports as an instant "workflow
         # file issue" at run time — e.g. env keys differing only in case are
