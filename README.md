@@ -460,29 +460,21 @@ One-time repository setup: **Settings → Actions → General → Workflow permi
 
 #### Making the image publicly pullable
 
-ghcr packages are **private by default**, so `docker pull` fails for anyone who is not logged in. The switch is on the package's own settings page:
+ghcr packages are **private by default**, so `docker pull` fails for anyone who is not logged in. Changing that is a two-step, **UI-only** procedure:
 
-1. open the package landing page — for a package published by a repository's workflow that is the **repository-scoped** URL:
-   `https://github.com/<owner>/<repo>/pkgs/container/clawperf`
-   (reachable from the repository page's *Packages* section, or from the organization's *Packages* list)
-2. on the right-hand side click **Package settings**
-3. at the bottom, under **Danger Zone**, click **Change visibility** → **Public**
+1. **Unlock public packages at the organization level** — otherwise the package page shows *"Setting is disabled by organization administrators"* next to Public and Internal and there is nothing to click:
 
-Notes, verified against a real org-scoped package:
+   `https://github.com/organizations/<org>/settings/packages` → **Package Creation** → tick **Public** (and **Internal** if wanted) → save.
 
-- A package pushed by `release.yml` **is linked to the repository** (the API reports `repository.full_name`), even though GitHub's docs note that org-scoped packages are not linked by default.
-- The **organization** package page does not offer the visibility switch for such a package, and the REST API cannot change it either: `PATCH /orgs/<org>/packages/container/<name>` answers `404 Not Found` even with a `packages: write` token. Use the repository-scoped page above.
-- Once public, it stays public across releases (visibility belongs to the package, not to a version).
+2. **Switch the package itself**:
+   `https://github.com/orgs/<org>/packages/container/clawperf/settings` → **Danger Zone** → **Change visibility** → **Public** → type the package name to confirm.
 
-To inspect the package programmatically (needs the `packages` scope, which a plain `repo` token does not have):
+Notes:
 
-```bash
-gh auth refresh -s read:packages,write:packages
-gh api /orgs/<org>/packages/container/clawperf \
-  --jq '{visibility, repository: .repository.full_name, owner: .owner.login}'
-```
-
-`release.yml` also attempts the visibility change and warns with the manual path when it is not permitted.
+- Step 1 needs an organization owner. If the organization belongs to an **enterprise**, an enterprise owner may have to allow public packages first.
+- Once public, a package **cannot be made private again**, and it stays public across releases (visibility belongs to the package, not to a version).
+- The REST API cannot do either step: the GitHub Packages API only lists/gets/deletes/restores packages, so `PATCH /orgs/<org>/packages/container/<name>` always answers `404` (this was verified with a token holding `write:packages`).
+- Fallback when the policy cannot be changed: publish to a **user** namespace (e.g. `ghcr.io/<user>/clawperf`), where the account owner controls visibility directly — or hand out the offline image tarballs from the release, which need no registry authentication at all.
 
 ## License
 

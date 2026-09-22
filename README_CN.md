@@ -444,29 +444,21 @@ git tag v0.7.0 && git push origin main v0.7.0
 
 #### 让镜像可被匿名拉取
 
-ghcr 的包**默认是私有的**，未登录的 `docker pull` 会失败。开关在包自己的设置页上：
+ghcr 的包**默认是私有的**，未登录的 `docker pull` 会失败。改为公开需要**两步，且只能在网页端操作**：
 
-1. 打开包的落地页 —— 由仓库工作流发布的包，用**仓库侧**地址：
-   `https://github.com/<owner>/<repo>/pkgs/container/clawperf`
-   （从仓库页面的 *Packages* 区域，或组织的 *Packages* 列表进入）
-2. 右侧点击 **Package settings**
-3. 页面底部 **Danger Zone** → **Change visibility** → **Public**
+1. **先在组织层放行公开包** —— 否则包的设置页里 Public / Internal 旁边会显示 *"Setting is disabled by organization administrators"*，根本没有可点的选项：
 
-以下几点已在真实的组织级包上验证过：
+   `https://github.com/organizations/<org>/settings/packages` → **Package Creation** → 勾选 **Public**（需要的话再勾 **Internal**）→ 保存。
 
-- `release.yml` 推送的包**确实已链接到仓库**（API 返回 `repository.full_name`），尽管 GitHub 文档说组织级包默认不链接。
-- 对这类包，**组织级包页面不提供可见性开关**，REST API 也改不了：即便用带 `packages: write` 的 token，`PATCH /orgs/<org>/packages/container/<name>` 也返回 `404 Not Found`。请用上面的仓库侧页面。
-- 一旦改为公开，后续发版会保持公开（可见性属于包本身，不属于某个版本）。
+2. **再切换包本身的可见性**：
+   `https://github.com/orgs/<org>/packages/container/clawperf/settings` → **Danger Zone** → **Change visibility** → **Public** → 输入包名确认。
 
-想用命令行确认包的状态（需要 `packages` 权限，普通 `repo` token 没有）：
+注意事项：
 
-```bash
-gh auth refresh -s read:packages,write:packages
-gh api /orgs/<org>/packages/container/clawperf \
-  --jq '{visibility, repository: .repository.full_name, owner: .owner.login}'
-```
-
-`release.yml` 也会尝试自动修改可见性，无权限时给出警告并提示手工路径。
+- 第 1 步需要组织 owner。若组织隶属于某个 **enterprise**，可能要先由 enterprise owner 允许公开包。
+- 包一旦公开就**无法再改回私有**，并且后续发版会保持公开（可见性属于包，不属于某个版本）。
+- **REST API 做不了这两步**：GitHub Packages API 只有 list/get/delete/restore，所以 `PATCH /orgs/<org>/packages/container/<name>` 恒返回 `404`（已用带 `write:packages` 的 token 实测确认）。
+- 若组织策略无法修改，退路有两条：推到**用户**命名空间（如 `ghcr.io/<user>/clawperf`，账号所有者可直接控制可见性）；或直接分发 Release 里的离线镜像包（完全不需要 registry 认证）。
 
 ## License
 
