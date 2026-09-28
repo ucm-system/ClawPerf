@@ -1,0 +1,137 @@
+site_name: ClawPerf
+site_description: Performance benchmarking for LLM serving backends under real agent workloads.
+site_url: https://ucm-system.github.io/ClawPerf/
+repo_url: https://github.com/ucm-system/ClawPerf
+repo_name: ucm-system/ClawPerf
+edit_uri: edit/main/docs/
+copyright: ClawPerf — Apache-2.0 · <a href="https://pypi.org/project/clawperf/">PyPI</a> · <a href="https://github.com/ucm-system/ClawPerf/pkgs/container/clawperf">Images</a>
+
+docs_dir: docs
+site_dir: site
+use_directory_urls: true
+strict: true
+
+theme:
+  name: material
+  language: en
+  # No Google Fonts: zero external requests at page view, and the CJK stack in
+  # stylesheets/extra.css is a better fit for a bilingual site anyway.
+  font: false
+  logo: assets/logo.svg
+  favicon: assets/favicon.svg
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    # navigation.instant is deliberately absent: it cannot produce the
+    # contextual language link the i18n plugin needs.
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.tracking
+    - navigation.footer
+    - toc.follow
+    - search.highlight
+    - search.suggest
+    # content.code.copy / content.code.annotate / content.tabs.link are absent:
+    # Material 9.7 ships no JS for them (its bundle contains neither
+    # "clipboard" nor "annotation"), so the copy button is provided by
+    # javascripts/copy.js rather than promised here.
+    - content.tooltips
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Follow the system preference
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+nav:
+  - Overview: index.md
+  - Quick start: quickstart.md
+  - Modes:
+      - scenario: modes/scenario.md
+      - hitrate: modes/hitrate.md
+      - slo: modes/slo.md
+      - agent: modes/agent.md
+      - trace: modes/trace.md
+      - record & replay: modes/record-replay.md
+  - Configuration: configuration.md
+  - Reference: reference.md
+  - Benchmark report: E2E_TEST_REPORT.md
+
+plugins:
+  - search
+  - glightbox
+  - i18n:
+      docs_structure: suffix
+      fallback_to_default: true
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: en
+          default: true
+          name: English
+          build: true
+        - locale: zh
+          name: 中文
+          build: true
+          nav_translations:
+            Overview: 总览
+            Quick start: 快速开始
+            Modes: 模式
+            scenario: scenario
+            hitrate: hitrate
+            slo: slo
+            agent: agent
+            trace: trace
+            record & replay: record & replay
+            Configuration: 配置
+            Reference: 完整参考
+            Benchmark report: 基准测试报告
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - toc:
+      permalink: true
+      permalink_title: Link to this section
+      toc_depth: 3
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+exclude_docs: |
+  samples.json
+  i18n/
+
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/copy.js
+
+validation:
+  links:
+    anchors: warn
+    unrecognized_links: warn

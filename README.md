@@ -9,7 +9,7 @@
 
 Performance benchmarking tool for LLM serving backends (vLLM / SGLang / MindIE / vllm-ascend) under **real agent workloads** — multi-turn, long-context, prefix-cache-heavy traffic.
 
-📖 **[Project site](https://ucm-system.github.io/ClawPerf/)** (bilingual, with the workload and pipeline diagrams) · **[Full reference](https://ucm-system.github.io/ClawPerf/reference.html)** — every mode, every context profile, all 73 parameters with examples · [中文文档](README_CN.md)
+📖 **[Project site](https://ucm-system.github.io/ClawPerf/)** (bilingual, with the workload and pipeline diagrams) · **[Full reference](https://ucm-system.github.io/ClawPerf/reference/)** — every mode, every context profile, all 73 parameters with examples · [中文文档](README_CN.md)
 
 Built on [EvalScope](https://github.com/modelscope/evalscope)'s perf infrastructure, ClawPerf measures how an inference stack behaves when actual coding agents hammer it: growing contexts, shared prefixes between turns, tool calls, and concurrent sessions.
 
@@ -48,12 +48,12 @@ matter, a real captured run and how to read it:
 
 | Mode | Page |
 |------|------|
-| `scenario` | [growing conversations under load](https://ucm-system.github.io/ClawPerf/modes/scenario.html) |
-| `hitrate` | [is the prefix cache actually working?](https://ucm-system.github.io/ClawPerf/modes/hitrate.html) |
-| `slo` | [capacity under a latency budget](https://ucm-system.github.io/ClawPerf/modes/slo.html) |
-| `agent` | [real tool-calling work](https://ucm-system.github.io/ClawPerf/modes/agent.html) |
-| `trace` | [your own traffic as the workload](https://ucm-system.github.io/ClawPerf/modes/trace.html) |
-| `record` & `replay` | [capture once, replay anywhere](https://ucm-system.github.io/ClawPerf/modes/record-replay.html) |
+| `scenario` | [growing conversations under load](https://ucm-system.github.io/ClawPerf/modes/scenario/) |
+| `hitrate` | [is the prefix cache actually working?](https://ucm-system.github.io/ClawPerf/modes/hitrate/) |
+| `slo` | [capacity under a latency budget](https://ucm-system.github.io/ClawPerf/modes/slo/) |
+| `agent` | [real tool-calling work](https://ucm-system.github.io/ClawPerf/modes/agent/) |
+| `trace` | [your own traffic as the workload](https://ucm-system.github.io/ClawPerf/modes/trace/) |
+| `record` & `replay` | [capture once, replay anywhere](https://ucm-system.github.io/ClawPerf/modes/record-replay/) |
 
 A real SLO sweep on a **vLLM-Ascend 910B3** (Qwen3-0.6B, 32K window) — the output of
 `clawperf report results_e2e/slo.json --print`:
@@ -396,7 +396,7 @@ clawperf --mode scenario --system-prefix-tokens 28000 \
 
 `--model-context-length` skips profiles whose base context cannot fit the model window (and clamps trace-replay `max_tokens` to what remains).
 
-📖 **[Full reference — every mode, every profile and all 73 parameters, with examples](https://ucm-system.github.io/ClawPerf/reference.html)** (generated from `clawperf --help`, so it can't drift).
+📖 **[Full reference — every mode, every profile and all 73 parameters, with examples](https://ucm-system.github.io/ClawPerf/reference/)** (generated from `clawperf --help`, so it can't drift).
 
 ### Key options by mode
 
@@ -581,7 +581,8 @@ ruff check src/ tests/
 
 ### Project site
 
-The landing page lives in `docs/` and is deployed to **https://ucm-system.github.io/ClawPerf/** by `pages.yml`.
+The pages are generated Markdown under `docs/` and built with MkDocs Material by `pages.yml`:
+`python scripts/gen_site.py && python -m mkdocs build --strict` serves the site from `site/`.
 
 ```bash
 python3 scripts/check_site.py docs     # validate before pushing (assets, tags, SVG XML)

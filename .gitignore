@@ -78,3 +78,7 @@ record_server.log
 
 # Local E2E harness scripts/logs (server bring-up, record client, probes)
 ops_e2e/
+
+# MkDocs build output
+site/
+.cache/

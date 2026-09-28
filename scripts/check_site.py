@@ -1,184 +1,132 @@
 #!/usr/bin/env python3
-"""Sanity-check the GitHub Pages site before it is deployed.
+"""Validate the Markdown sources of the docs site.
 
-Three checks, all stdlib-only so it runs anywhere:
+These are the checks that must hold *before* `mkdocs build --strict` (which
+catches broken links and anchors on its own, and is run in CI). They cover what
+a build cannot know about:
 
-1. every relative ``src``/``href`` in the HTML resolves to a real file
-2. the HTML has balanced tags (catches an unclosed <div> that would silently
-   break the layout of everything after it)
-3. every SVG under ``docs/assets`` parses as XML (an unescaped ``&`` makes an
-   SVG render as a broken image, and nothing else would notice)
+  * every page exists in every language — a missing translation silently falls
+    back to English, which is how a translated site quietly becomes English
+  * a Chinese page actually contains Chinese, and an English page does not — a
+    copy-paste that was never translated is invisible otherwise
+  * every link and image in every page resolves to a real file
+  * every committed SVG diagram is used by some page
+  * no leftovers from the previous hand-written HTML site
 
-Usage: python3 scripts/check_site.py docs
+Usage: python scripts/check_site.py [--docs docs]
 """
 
 from __future__ import annotations
 
+import argparse
+import re
 import sys
-import xml.etree.ElementTree as ET
-from html.parser import HTMLParser
 from pathlib import Path
 
-# HTML void elements never need a closing tag.
-VOID = {
-    "area", "base", "br", "col", "embed", "hr", "img", "input", "link",
-    "meta", "param", "source", "track", "wbr",
-}
-# Attributes whose values point at local files.
-URL_ATTRS = ("src", "href")
+ROOT = Path(__file__).resolve().parent.parent
+
+LANGS = ("en", "zh")
+PAGES = ["index", "quickstart", "configuration", "reference",
+         "modes/scenario", "modes/hitrate", "modes/slo",
+         "modes/agent", "modes/trace", "modes/record-replay"]
+
+CJK = re.compile(r"[\u3400-\u9fff]")
+LINK = re.compile(r"!?\[[^\]]*\]\(([^)\s]+)")
+NAV_ENTRY = re.compile(r"^\s*-?\s*[^:]+:\s*([\w/\-.]+\.md)\s*$", re.MULTILINE)
 
 
-class SiteParser(HTMLParser):
-    """Collect local asset references and verify tag balance."""
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.stack: list[tuple[str, int]] = []
-        self.problems: list[str] = []
-        self.refs: list[tuple[str, int]] = []
-        self.ids: set[str] = set()
-        self.fragments: list[tuple[str, int]] = []
-        self.lang_counts = {"en": 0, "zh": 0}
-
-    def _note_classes(self, attrs) -> None:
-        for name, value in attrs:
-            if name == "class" and value:
-                tokens = value.split()
-                for lang in ("en", "zh"):
-                    if lang in tokens:
-                        self.lang_counts[lang] += 1
-
-    def handle_starttag(self, tag, attrs):
-        line = self.getpos()[0]
-        self._note_classes(attrs)
-        for name, value in attrs:
-            if name == "id" and value:
-                self.ids.add(value)
-            if name in URL_ATTRS and value:
-                self.refs.append((value, line))
-                if value.startswith("#") and len(value) > 1:
-                    self.fragments.append((value[1:], line))
-        if tag not in VOID:
-            self.stack.append((tag, line))
-
-    def handle_startendtag(self, tag, attrs):
-        self._note_classes(attrs)
-        for name, value in attrs:
-            if name == "id" and value:
-                self.ids.add(value)
-            if name in URL_ATTRS and value:
-                self.refs.append((value, self.getpos()[0]))
-                if value.startswith("#") and len(value) > 1:
-                    self.fragments.append((value[1:], self.getpos()[0]))
-
-    def handle_endtag(self, tag):
-        if tag in VOID:
-            return
-        line = self.getpos()[0]
-        if not self.stack:
-            self.problems.append(f"line {line}: </{tag}> with nothing open")
-            return
-        open_tag, open_line = self.stack.pop()
-        if open_tag != tag:
-            self.problems.append(
-                f"line {line}: </{tag}> closes <{open_tag}> opened on line {open_line}"
-            )
+def page_path(docs: Path, name: str, lang: str) -> Path:
+    return docs / f"{name}.{lang}.md"
 
 
-_ID_CACHE: dict = {}
-
-
-def ids_of(path: Path) -> set:
-    """All id attributes in a page (cached), for cross-page anchor checks."""
-    if path not in _ID_CACHE:
-        parser = SiteParser()
-        parser.feed(path.read_text(encoding="utf-8"))
-        parser.close()
-        _ID_CACHE[path] = parser.ids
-    return _ID_CACHE[path]
-
-
-def check_html(path: Path, root: Path) -> list[str]:
-    problems: list[str] = []
-    parser = SiteParser()
-    parser.feed(path.read_text(encoding="utf-8"))
-    parser.close()
-
-    problems.extend(f"{path.name}: {p}" for p in parser.problems)
-    if parser.stack:
-        leftovers = ", ".join(f"<{t}> (line {ln})" for t, ln in parser.stack)
-        problems.append(f"{path.name}: unclosed tags at end of file: {leftovers}")
-
-    external = ("http://", "https://", "//", "#", "mailto:", "data:", "tel:")
-    for value, line in parser.refs:
-        if value.startswith(external) or value.startswith("{{"):
+def check_links(docs: Path, path: Path) -> list:
+    problems = []
+    for target in LINK.findall(path.read_text(encoding="utf-8")):
+        if target.startswith(("http://", "https://", "mailto:", "tel:", "#", "data:")):
             continue
-        file_part, _, fragment = value.partition("#")
-        target = (path.parent / file_part.split("?")[0]).resolve()
-        if not target.exists():
-            problems.append(f"{path.name}: line {line}: missing asset {value!r}")
+        file_part = target.split("#")[0]
+        if not file_part:
             continue
-        if root not in target.parents and target != root:
-            problems.append(f"{path.name}: line {line}: asset {value!r} escapes the site root")
-            continue
-        # Cross-page anchors: nav links like reference.html#params must resolve.
-        if fragment and target.suffix == ".html" and fragment not in ids_of(target):
-            problems.append(
-                f"{path.name}: line {line}: dead anchor #{fragment} in {target.name}"
-            )
-
-    # In-page anchors (the table of contents) must point at a real id, or the
-    # link silently does nothing.
-    for fragment, line in parser.fragments:
-        if fragment not in parser.ids:
-            problems.append(f"{path.name}: line {line}: dead in-page anchor #{fragment}")
-
-    # Bilingual parity: every English node needs a Chinese twin, otherwise one
-    # of the two languages silently loses a paragraph.
-    en_count = parser.lang_counts["en"]
-    zh_count = parser.lang_counts["zh"]
-    if en_count != zh_count:
-        problems.append(
-            f"{path.name}: bilingual parity broken — {en_count} .en nodes vs "
-            f"{zh_count} .zh nodes (a translation is missing or duplicated)"
-        )
+        if not (path.parent / file_part).resolve().is_file():
+            problems.append(f"{path.relative_to(docs)}: link target {target!r} does not exist")
     return problems
 
 
-def check_svgs(assets: Path) -> list[str]:
-    problems: list[str] = []
-    svgs = sorted(assets.glob("*.svg"))
-    if not svgs:
-        problems.append(f"{assets}: no SVG figures found")
-    for svg in svgs:
-        try:
-            ET.parse(svg)
-        except ET.ParseError as exc:
-            problems.append(f"{svg.name}: XML parse error: {exc}")
+def check_language(docs: Path, path: Path, lang: str) -> list:
+    body = re.sub(r"^---.*?---", "", path.read_text(encoding="utf-8"), flags=re.DOTALL)
+    has_cjk = bool(CJK.search(body))
+    rel = path.relative_to(docs)
+    if lang == "zh" and not has_cjk:
+        return [f"{rel}: Chinese page contains no Chinese — was it translated?"]
+    if lang == "en" and has_cjk:
+        return [f"{rel}: English page contains Chinese characters"]
+    return []
+
+
+def check_mkdocs(conf: Path, docs: Path) -> list:
+    problems = []
+    text = conf.read_text(encoding="utf-8")
+    for target in NAV_ENTRY.findall(text):
+        stem = target[:-3]
+        if stem == "E2E_TEST_REPORT":
+            if not (docs / "E2E_TEST_REPORT.md").is_file():
+                problems.append(f"mkdocs.yml: nav entry {target} does not exist")
+            continue
+        for lang in LANGS:
+            if not (docs / f"{stem}.{lang}.md").is_file():
+                problems.append(f"mkdocs.yml: nav entry {target} has no {lang} page")
+    for required in ("strict: true", "content.code.copy", "i18n:", "docs_structure: suffix"):
+        if required not in text:
+            problems.append(f"mkdocs.yml: missing {required!r}")
+    return problems
+
+
+def check_no_legacy(docs: Path) -> list:
+    problems = [f"{p.relative_to(docs)}: leftover from the hand-written site"
+                for p in sorted(docs.rglob("*.html"))]
+    problems += [f"{p.relative_to(docs)}: a screenshot, in a text site"
+                 for p in sorted(docs.rglob("*.png"))]
+    if (docs / "shots").exists():
+        problems.append("docs/shots: the screenshot directory is back")
     return problems
 
 
 def main(argv: list[str]) -> int:
-    root = Path(argv[1] if len(argv) > 1 else "docs").resolve()
-    index = root / "index.html"
-    if not index.is_file():
-        print(f"FAIL: {index} not found")
-        return 1
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--docs", default=str(ROOT / "docs"))
+    ap.add_argument("--config", default=str(ROOT / "mkdocs.yml"))
+    args = ap.parse_args(argv[1:])
+    docs = Path(args.docs)
 
-    pages = sorted(root.glob("*.html")) + sorted(root.glob("*/*.html"))
-    problems: list[str] = []
-    for page in pages:
-        problems.extend(check_html(page, root))
-    problems.extend(check_svgs(root / "assets"))
+    problems: list = []
+    for name in PAGES:
+        for lang in LANGS:
+            path = page_path(docs, name, lang)
+            if not path.is_file():
+                problems.append(f"{path.relative_to(docs)}: missing — run scripts/gen_site.py")
+                continue
+            problems += check_links(docs, path)
+            problems += check_language(docs, path, lang)
+
+    used = "\n".join(page_path(docs, n, lang).read_text(encoding="utf-8")
+                     for n in PAGES for lang in LANGS if page_path(docs, n, lang).is_file())
+    svgs = sorted((docs / "assets").glob("*.svg"))
+    for svg in svgs:
+        if svg.name in ("logo.svg", "favicon.svg"):
+            continue
+        if svg.name not in used:
+            problems.append(f"assets/{svg.name}: not referenced by any page")
+
+    problems += check_mkdocs(Path(args.config), docs)
+    problems += check_no_legacy(docs)
+
     if problems:
         print("site check FAILED:")
-        for p in problems:
-            print(f"  - {p}")
+        for problem in problems:
+            print(f"  - {problem}")
         return 1
-
-    svgs = len(list((root / "assets").glob("*.svg")))
-    names = ", ".join(str(p.relative_to(root)) for p in pages)
-    print(f"site check OK: {len(pages)} page(s) ({names}) + {svgs} SVG figures")
+    print(f"site check OK: {len(PAGES) * len(LANGS)} Markdown pages "
+          f"({len(PAGES)} topics x {len(LANGS)} languages), {len(svgs)} SVG figures")
     return 0
 
 

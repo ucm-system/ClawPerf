@@ -2,14 +2,14 @@
 
 [![CI](https://github.com/ucm-system/ClawPerf/actions/workflows/ci.yml/badge.svg)](https://github.com/ucm-system/ClawPerf/actions/workflows/ci.yml)
 [![Release](https://github.com/ucm-system/ClawPerf/actions/workflows/release.yml/badge.svg)](https://github.com/ucm-system/ClawPerf/actions/workflows/release.yml)
-[![Site](https://img.shields.io/badge/site-ucm--system.github.io-blue)](https://ucm-system.github.io/ClawPerf/)
+[![Site](https://img.shields.io/badge/site-ucm--system.github.io-blue)](https://ucm-system.github.io/ClawPerf/zh/)
 [![PyPI Version](https://img.shields.io/pypi/v/clawperf.svg)](https://pypi.org/project/clawperf/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/clawperf.svg)](https://pypi.org/project/clawperf/)
 [![License](https://img.shields.io/pypi/l/clawperf.svg)](https://github.com/ucm-system/ClawPerf/blob/main/LICENSE)
 
 面向 LLM 推理服务（vLLM / SGLang / MindIE / vllm-ascend）的性能基准测试工具，聚焦**真实 Agent 工作负载**：多轮对话、长上下文、前缀缓存密集流量。
 
-📖 **[项目主页](https://ucm-system.github.io/ClawPerf/)**（中英双语，含工作负载与流水线示意图） · **[完整参考](https://ucm-system.github.io/ClawPerf/reference.html)** —— 每种模式、每个上下文档位、全部 73 个参数与示例 · [English](README.md)
+📖 **[项目主页](https://ucm-system.github.io/ClawPerf/zh/)**（中英双语，含工作负载与流水线示意图） · **[完整参考](https://ucm-system.github.io/ClawPerf/zh/reference/)** —— 每种模式、每个上下文档位、全部 73 个参数与示例 · [English](README.md)
 
 基于 [EvalScope](https://github.com/modelscope/evalscope) 的 perf 基础设施，ClawPerf 衡量推理栈在真实编码 Agent 冲击下的表现：上下文增长、轮次间共享前缀、工具调用、并发会话。
 
@@ -43,12 +43,12 @@
 
 | 模式 | 页面 |
 |------|------|
-| `scenario` | [负载下不断增长的会话](https://ucm-system.github.io/ClawPerf/modes/scenario.html) |
-| `hitrate` | [前缀缓存到底有没有生效](https://ucm-system.github.io/ClawPerf/modes/hitrate.html) |
-| `slo` | [时延预算下的容量](https://ucm-system.github.io/ClawPerf/modes/slo.html) |
-| `agent` | [真实工具调用工作负载](https://ucm-system.github.io/ClawPerf/modes/agent.html) |
-| `trace` | [用你自己的流量当负载](https://ucm-system.github.io/ClawPerf/modes/trace.html) |
-| `record` & `replay` | [录一次，随处回放](https://ucm-system.github.io/ClawPerf/modes/record-replay.html) |
+| `scenario` | [负载下不断增长的会话](https://ucm-system.github.io/ClawPerf/zh/modes/scenario/) |
+| `hitrate` | [前缀缓存到底有没有生效](https://ucm-system.github.io/ClawPerf/zh/modes/hitrate/) |
+| `slo` | [时延预算下的容量](https://ucm-system.github.io/ClawPerf/zh/modes/slo/) |
+| `agent` | [真实工具调用工作负载](https://ucm-system.github.io/ClawPerf/zh/modes/agent/) |
+| `trace` | [用你自己的流量当负载](https://ucm-system.github.io/ClawPerf/zh/modes/trace/) |
+| `record` & `replay` | [录一次，随处回放](https://ucm-system.github.io/ClawPerf/zh/modes/record-replay/) |
 
 昇腾 **910B3** 上的真实 SLO 扫描（Qwen3-0.6B，32K 窗口）—— `clawperf report results_e2e/slo.json --print` 的输出：
 
@@ -378,7 +378,7 @@ clawperf --mode scenario --system-prefix-tokens 28000 \
 
 `--model-context-length` 会跳过基础上下文放不进模型窗口的档位（并把 trace 回放的 `max_tokens` 裁剪到剩余窗口）。
 
-📖 **[完整参考 —— 每种模式、每个档位、全部 73 个参数与示例](https://ucm-system.github.io/ClawPerf/reference.html)**（由 `clawperf --help` 自动生成，不会与代码脱节）。
+📖 **[完整参考 —— 每种模式、每个档位、全部 73 个参数与示例](https://ucm-system.github.io/ClawPerf/zh/reference/)**（由 `clawperf --help` 自动生成，不会与代码脱节）。
 
 ### 各模式关键参数
 
@@ -560,7 +560,8 @@ ruff check src/ tests/
 
 ### 项目主页
 
-主页源码在 `docs/`，由 `pages.yml` 部署到 **https://ucm-system.github.io/ClawPerf/**。
+页面是 `docs/` 下由脚本生成的 Markdown，由 `pages.yml` 用 MkDocs Material 构建并部署（英文根目录、中文在 `/zh/`）：
+`python scripts/gen_site.py && python -m mkdocs build --strict`，产物在 `site/`。
 
 ```bash
 python3 scripts/check_site.py docs     # 推送前校验（资源、标签闭合、SVG XML）

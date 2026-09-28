@@ -1,7 +1,8 @@
 name: Pages
 
-# Publishes docs/ as the project site:
-#   https://ucm-system.github.io/ClawPerf/
+# Publishes the MkDocs build as the project site:
+#   https://ucm-system.github.io/ClawPerf/       (English, the default locale)
+#   https://ucm-system.github.io/ClawPerf/zh/    (Chinese)
 #
 # One-time setup: Settings → Pages → Build and deployment → Source =
 # "GitHub Actions". After that this workflow owns the site.
@@ -10,8 +11,10 @@ on:
     branches: [main]
     paths:
       - "docs/**"
+      - "mkdocs.yml"
       - "src/clawperf/**"
       - "scripts/check_site.py"
+      - "scripts/check_layout.py"
       - "scripts/gen_site.py"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
@@ -37,34 +40,39 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install the package (the reference page is generated from the CLI)
-        run: python3 -m pip install -e .
+      - name: Install the package and the docs toolchain
+        # Pinned through the [docs] extra: MkDocs 2.0 is announced as breaking
+        # plugins and themes outright, so upgrades must be deliberate.
+        run: python3 -m pip install -e ".[docs]"
 
-      - name: Validate the site
-        # Broken relative asset paths, unbalanced tags and malformed SVG all
-        # fail here instead of shipping a half-rendered page.
+      - name: Validate the sources
+        # Missing translations, dead links, an unused diagram and leftovers from
+        # the hand-written site all fail here.
         run: python3 scripts/check_site.py docs
 
-      - name: The reference page matches the CLI
-        # docs/reference.html lists every flag with its help text and default;
-        # if it drifts from clawperf --help the site would quietly lie.
+      - name: The generated pages match the code
+        # docs/*.md list every flag with its help text and default; if they
+        # drift from clawperf --help the site would quietly lie.
         run: python3 scripts/gen_site.py --check
-
-      - name: Layout check in real Chrome
-        # Verifies the rendered page: left index present and sticky, headings
-        # large enough, no horizontal overflow, every image loaded.
-        run: python3 scripts/check_layout.py
 
       - name: Validate the diagram geometry
         # Overlapping boxes, clipped labels and detached arrows are caught by
         # the same rules the diagrams were drawn against.
         run: python3 scripts/check_diagrams.py docs/assets
 
+      - name: Build the site strictly
+        run: python3 -m mkdocs build --strict
+
+      - name: Measure the built pages in real Chrome
+        # Nav, language switcher targets, code-copy buttons (after JS), images
+        # and horizontal overflow at desktop and phone widths.
+        run: python3 scripts/check_layout.py
+
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: docs
+          path: site
 
   deploy:
     name: Deploy to GitHub Pages

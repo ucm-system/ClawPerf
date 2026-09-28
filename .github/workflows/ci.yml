@@ -43,17 +43,25 @@ jobs:
           python3 scripts/check_site.py docs
           python3 scripts/check_diagrams.py docs/assets
 
-      - name: Install the package (for the reference-page drift check)
-        run: python -m pip install -e .
+      - name: Install the package and the docs toolchain
+        # Docs deps are pinned: MkDocs 2.0 is announced as breaking plugins and
+        # themes outright, so an unpinned upgrade must not reach CI on its own.
+        run: python -m pip install -e ".[docs]"
 
-      - name: The generated reference page matches the code
-        # docs/reference.html is generated from clawperf --help + the context
-        # profiles; a new/renamed flag without regenerating fails here.
+      - name: The generated pages match the code
+        # docs/*.md are generated from clawperf --help + the context profiles +
+        # the captured samples; a new/renamed flag without regenerating fails.
         run: python3 scripts/gen_site.py --check
 
-      - name: Layout check (index, headings, overflow) in real Chrome
-        # "There is no index" and "the headings are too small" are not things a
-        # tag-balance check can catch; this measures the rendered page.
+      - name: Build the site strictly
+        # --strict turns broken links, dead anchors and bad nav entries into
+        # failures, which is exactly what a docs change should be gated on.
+        run: python3 -m mkdocs build --strict
+
+      - name: Layout check (nav, language switcher, copy buttons, overflow)
+        # "There is no index" and "the language switcher goes nowhere" are not
+        # things a source check can catch; this measures the built pages in
+        # real Chrome, after JavaScript has run.
         run: python3 scripts/check_layout.py
 
       - name: Lint the workflow files (actionlint)

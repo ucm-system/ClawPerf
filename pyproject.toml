@@ -34,6 +34,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+docs = [
+  # Pinned on purpose: MkDocs 2.0 is announced as breaking plugins and
+  # themes with no migration path, so a docs build must not drift silently.
+  "mkdocs>=1.6,<2",
+  "mkdocs-material>=9.5,<10",
+  "mkdocs-static-i18n>=1.2,<2",
+  "mkdocs-glightbox>=0.4,<1",
+]
 mock-server = ["fastapi>=0.100", "uvicorn>=0.20"]
 agent = ["openai>=1.0"]
 record = ["fastapi>=0.100", "uvicorn>=0.20", "httpx>=0.25"]
