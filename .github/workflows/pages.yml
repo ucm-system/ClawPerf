@@ -12,9 +12,11 @@ on:
     paths:
       - "docs/**"
       - "mkdocs.yml"
+      - "pyproject.toml"
       - "src/clawperf/**"
       - "scripts/check_site.py"
       - "scripts/check_layout.py"
+      - "scripts/check_diagrams.py"
       - "scripts/gen_site.py"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
