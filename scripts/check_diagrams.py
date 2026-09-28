@@ -191,10 +191,17 @@ def check(path: Path) -> list[str]:
             add(f"text {lb.text[:34]!r} outside viewBox: "
                 f"l={lb.left:.0f} r={lb.right:.0f} t={lb.top:.0f} b={lb.bottom:.0f}")
 
-    # 2. box/box overlap (groups may contain boxes; groups may not overlap each other)
+    # 2. box/box overlap (groups may contain boxes; groups may not overlap each
+    #    other). A rect that fills the canvas is a background panel — icons and
+    #    a few figures legitimately draw their boxes on one.
+    def is_background(box):
+        return box.w * box.h >= 0.9 * vw * vh
+
     for i, a in enumerate(boxes):
         for b in boxes[i + 1:]:
             if not a.overlaps(b):
+                continue
+            if is_background(a) or is_background(b):
                 continue
             if a.is_group and a.contains(b):
                 continue
