@@ -40,7 +40,7 @@ jobs:
         # The Pages workflow runs these too; failing here keeps a broken site
         # from being merged in the first place.
         run: |
-          python3 scripts/check_site.py docs
+          python3 scripts/check_site.py
           python3 scripts/check_diagrams.py docs/assets
 
       - name: Install the package and the docs toolchain

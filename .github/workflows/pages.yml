@@ -48,7 +48,7 @@ jobs:
       - name: Validate the sources
         # Missing translations, dead links, an unused diagram and leftovers from
         # the hand-written site all fail here.
-        run: python3 scripts/check_site.py docs
+        run: python3 scripts/check_site.py
 
       - name: The generated pages match the code
         # docs/*.md list every flag with its help text and default; if they
